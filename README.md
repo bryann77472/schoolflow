@@ -31,12 +31,14 @@
 O **SchoolFlow** é um organizador escolar para estudantes do **Ensino Fundamental II** (6º ao 9º ano) e do **Ensino Médio** (1º ao 3º ano), além de professores e administradores. A aplicação reúne, em uma única experiência:
 
 - criação de conta de aluno e um onboarding guiado pelos recursos;
+- um **modo convidado** com dados de demonstração do Ensino Médio e funções de edição limitadas;
 - a grade semanal de aulas adaptada à etapa e ao ano do estudante;
-- o acompanhamento de trabalhos por status, prioridade e prazo;
+- o acompanhamento de trabalhos com filtros por turma, prioridade, status e prazo;
 - o calendário mensal de eventos com confirmação de presença;
 - ferramentas de produtividade, como modo foco com duração personalizada e paleta de comandos;
+- um **modo apresentação** para professores e administradores exibirem apenas o conteúdo da página;
 - um painel administrativo com gestão de usuários, turmas e matrículas;
-- uma área **Opções** para personalizar perfil, aparência e layout.
+- uma área **Opções** para personalizar perfil, aparência, layout e atalhos.
 
 Tudo funciona no navegador com dados de demonstração persistidos em `localStorage`. O projeto não exige instalação de dependências, framework ou etapa de compilação.
 
@@ -45,9 +47,12 @@ Tudo funciona no navegador com dados de demonstração persistidos em `localStor
 - **Shell de aplicação** com sidebar retrátil, alça visível para expandir quando recolhida, topbar, breadcrumb, menu mobile e atalhos rápidos.
 - **Layout configurável**: sidebar à esquerda ou à direita e topbar no topo ou na parte de baixo; no celular, a topbar permanece no topo e a sidebar vira drawer.
 - **Conta de aluno** com escolha de etapa/ano, matrícula automática nas turmas da etapa e onboarding em quatro passos.
-- **Tema claro, escuro ou automático** (segue o sistema), com cinco cores de destaque: índigo, esmeralda, rosa, âmbar e céu.
+- **Tema claro, escuro, automático ou de alto contraste**, com cinco cores de destaque: índigo, esmeralda, rosa, âmbar e céu.
 - **Quatro níveis de intensidade de cor** e **nove temas prontos** que combinam tema, acento e vibração em um clique.
 - **Densidade confortável ou compacta** e opção de reduzir animações.
+- **Modo convidado** com demonstração do Ensino Médio, leitura de trabalhos/eventos e CTA para criar conta a qualquer momento.
+- **Modo apresentação** para professores e administradores, ocultando sidebar, topbar e navegação mobile.
+- **Atalhos personalizáveis** em **Opções → Atalhos**, com captura de combinação, detecção de conflitos e restauração dos padrões.
 - **Tipografia editorial** com Inter para leitura e Space Grotesk para títulos.
 - **Componentes ricos**: cards com métricas, gráficos de barras, donut chart, chips de turma, pills de prioridade, avatares, splash de entrada e toasts.
 - **Layout responsivo** para desktop, tablet e celular, incluindo drawer de navegação e calendário adaptado.
@@ -57,7 +62,7 @@ Tudo funciona no navegador com dados de demonstração persistidos em `localStor
 
 ### Paleta de comandos
 
-Abra com `Ctrl+K` (Windows/Linux) ou `⌘K` (macOS). A paleta pesquisa páginas, ações e preferências, com navegação por setas e execução por `Enter`.
+Abra com `Ctrl+K` (Windows/Linux) ou `⌘K` (macOS). A paleta pesquisa páginas, ações e preferências e também faz busca textual em **trabalhos, eventos, turmas e usuários** (usuários apenas para administradores). Os resultados são agrupados por coleção, com navegação por setas e execução por `Enter`.
 
 ### Central de notificações
 
@@ -73,7 +78,7 @@ Timer com presets de **25, 50 e 5 minutos** e **duração personalizada de 1 min
 
 ### Board Kanban
 
-Os trabalhos podem ser organizados em **A fazer**, **Em andamento**, **Em revisão** e **Concluído**. Arraste os cards entre colunas; ao concluir, há confete e atualização imediata dos contadores. A visualização em lista oferece filtros por status, turma, prioridade e busca textual.
+Os trabalhos podem ser organizados em **A fazer**, **Em andamento**, **Em revisão** e **Concluído**. Arraste os cards entre colunas; ao concluir, há confete e atualização imediata dos contadores. A visualização em lista oferece **filtros avançados por turma, prioridade, status e prazo** (atrasados, hoje, próximos 7 ou 30 dias), busca textual normalizada e resumo da quantidade filtrada. Convidados veem o board e a lista em modo somente leitura.
 
 ### Calendário e RSVP
 
@@ -85,12 +90,15 @@ Painel com abas de visão geral, usuários, turmas e matrículas. Inclui indicad
 
 ### Opções, aparência e temas prontos
 
-A área **Opções** é organizada em quatro abas:
+A área **Opções** é organizada em cinco abas:
 
-- **Aparência**: tema, cor de destaque, intensidade de cor, densidade e redução de movimento.
+- **Aparência**: tema (claro, escuro, automático ou alto contraste), cor de destaque, intensidade de cor, densidade e redução de movimento.
 - **Perfil**: nome, etapa de ensino, ano/série e cor do avatar. Alterar a etapa sincroniza automaticamente as matrículas do aluno com as turmas da nova etapa.
 - **Layout**: sidebar à esquerda ou à direita, topbar no topo ou na parte de baixo, menu recolhido, modo compacto e redução de animações.
 - **Dados**: rever o onboarding e restaurar a demonstração.
+- **Atalhos**: personalizar as combinações de teclado, com captura, detecção de conflitos e restauração dos padrões.
+
+O **alto contraste** usa fundo preto, texto branco e amarelo de destaque, remove sombras e gradientes e reforça bordas e foco visível. Ao escolher outro tema ou preset, o contraste retorna ao normal. O **modo apresentação**, disponível para professores e administradores, esconde a navegação e deixa apenas o conteúdo da página; ele é persistido nas preferências e pode ser encerrado por `Esc` ou pelo botão flutuante.
 
 Quando o menu é recolhido, uma alça flutuante aparece na borda da sidebar para expandi-la novamente. No celular, a topbar continua no topo e a sidebar abre como drawer com os rótulos visíveis.
 
@@ -121,13 +129,16 @@ O cartão do preset fica ativo apenas enquanto a combinação atual corresponder
 
 - Toasts para sucesso, aviso, erro e informação.
 - Modais com foco preso ao diálogo e empilhamento correto para confirmações aninhadas.
-- `Esc` fecha a camada ativa (paleta, foco, modal ou popover).
+- `Esc` fecha a camada ativa (paleta, foco, modal ou popover) e encerra o modo apresentação quando não há camada aberta.
 - Atalhos desativados na tela de login para evitar ações sem sessão.
-- Preferência de tema aplicada antes do primeiro paint, evitando flash de tema incorreto.
+- Atalhos de letra são ignorados enquanto o usuário digita; combinações com modificador continuam funcionando.
+- Preferência de tema aplicada antes do primeiro paint, evitando flash de tema incorreto, inclusive no alto contraste.
 
 ## Conta e onboarding
 
 A tela de login oferece **criação de conta apenas para alunos**. O formulário pede nome, email, etapa de ensino, ano/série, senha e confirmação. A etapa padrão é **Ensino Fundamental II**, com **8º ano** selecionado; o aluno pode escolher qualquer ano do Fundamental II ou do Ensino Médio.
+
+Também é possível **explorar como convidado**: a sessão abre o dashboard com dados de demonstração do Ensino Médio, sem criar conta. O convidado pode navegar, pesquisar, usar o modo foco, alternar aparência/layout e personalizar atalhos, mas não pode criar, editar, excluir ou concluir trabalhos, eventos e RSVP, nem alterar perfil, dados ou administração. A faixa de convidado e o menu do usuário oferecem **Criar conta**, que encerra a demonstração e abre o cadastro.
 
 Ao criar a conta:
 
@@ -142,26 +153,28 @@ O onboarding pode ser revisto em **Opções → Dados → Rever onboarding**. Co
 
 | Perfil | O que enxerga e pode fazer |
 |---|---|
+| **Convidado** | Demonstração do Ensino Médio em modo somente leitura: aulas, trabalhos e eventos da etapa. Pode navegar, pesquisar, usar foco, aparência, layout e atalhos; não edita dados, RSVP, perfil ou administração. |
 | **Aluno** | Aulas das turmas da sua etapa em que está matriculado, trabalhos dessas aulas, eventos globais e RSVP. |
-| **Professor** | Aulas que leciona, trabalhos dessas aulas ou criados por ele, eventos e RSVP. |
-| **Administrador** | Todos os dados, painel administrativo, CRUD de usuários/turmas e matrículas. |
+| **Professor** | Aulas que leciona, trabalhos dessas aulas ou criados por ele, eventos e RSVP; pode ativar o modo apresentação. |
+| **Administrador** | Todos os dados, painel administrativo, CRUD de usuários/turmas e matrículas; pode ativar o modo apresentação. |
 
-Alunos têm `stage` (`fundamental` ou `medio`) e `grade` (6º–9º ano ou 1º–3º ano). As turmas também pertencem a uma etapa, e o dashboard, os chips e os textos usam essa informação. As consultas com escopo por perfil ficam em `assets/js/data.js` (`getScopedClasses`, `getScopedAssignments`, `getScopedEvents`).
+Alunos têm `stage` (`fundamental` ou `medio`) e `grade` (6º–9º ano ou 1º–3º ano). As turmas também pertencem a uma etapa, e o dashboard, os chips e os textos usam essa informação. As consultas com escopo por perfil ficam em `assets/js/data.js` (`getScopedClasses`, `getScopedAssignments`, `getScopedEvents`, `getScopedUsers`); o convidado usa um usuário sintético com `role: 'convidado'` e `stage: 'medio'`.
 
 ## Atalhos de teclado
 
-| Atalho | Ação |
+| Atalho padrão | Ação |
 |---|---|
 | `Ctrl+K` / `⌘K` | Abrir busca e comandos |
 | `N` | Novo trabalho |
 | `E` | Novo evento |
 | `F` | Modo foco |
 | `T` | Alternar tema claro/escuro |
+| `P` | Ativar/sair do modo apresentação (professor/admin) |
 | `?` | Ver todos os atalhos |
-| `Esc` | Fechar a camada ativa |
+| `Esc` | Fechar a camada ativa ou sair do modo apresentação |
 | `Espaço` | Play/pause no modo foco |
 
-Os atalhos de letra são ignorados enquanto o usuário digita em campos de formulário.
+Os atalhos podem ser alterados em **Opções → Atalhos**. Cada ação tem um botão de captura: pressione a combinação desejada (com ou sem `Ctrl`, `Alt`, `Shift` ou `⌘`), ou `Esc` para cancelar. Combinações duplicadas são recusadas com aviso, e **Restaurar padrões** volta à tabela acima. Os atalhos de letra são ignorados enquanto o usuário digita em campos de formulário; combinações com modificador continuam disponíveis.
 
 ## Arquitetura
 
@@ -201,8 +214,10 @@ As datas de demonstração são geradas em relação ao dia atual, então prazos
 |---|---|
 | `schoolflow.data.v4` | Usuários, turmas, trabalhos, eventos, matrículas, foco, sessões e notificações lidas. |
 | `schoolflow.session.v1` | Sessão ativa (id, nome, email, perfil, etapa/ano e área). |
-| `schoolflow.prefs.v1` | Tema, cor de destaque, intensidade de cor, densidade, animações, sidebar recolhida, posição da sidebar/topbar, aba de opções, visão de tarefas, aba admin e filtro do calendário. |
+| `schoolflow.prefs.v1` | Tema, alto contraste, cor de destaque, intensidade de cor, densidade, animações, sidebar recolhida, posição da sidebar/topbar, modo apresentação, aba de opções, visão de tarefas, aba admin, filtro do calendário e atalhos personalizados. |
 | `loggedUser` | Espelho legado da sessão, mantido para compatibilidade. |
+
+A sessão de convidado usa as mesmas chaves (`schoolflow.session.v1` e `loggedUser`), com `role: 'convidado'` e `isGuest: true`. Ao criar conta ou sair, a sessão é limpa e o modo apresentação é encerrado.
 
 Na primeira execução sem dados salvos, o estado demo é gravado em `schoolflow.data.v4`. Dados antigos de `schoolflow.data.v3` são ignorados; não há migração automática. Para voltar ao estado original, use **Opções → Dados → Restaurar demonstração**. Isso remove os dados salvos e encerra a sessão.
 
@@ -260,13 +275,13 @@ A tela de login permite preencher as credenciais com um clique. Também existem 
 ## Design system
 
 - **Cores**: variáveis CSS para superfícies, texto, bordas, estados e cinco acentos. O tema escuro redefine a paleta sem duplicar componentes. A camada vibrante é ativada por `data-vibrancy` e usa tokens próprios para as cores de apoio.
-- **Aparência**: `data-vibrancy` controla a intensidade (`super`, `soft`, `normal` ou `classic`); os temas prontos apenas combinam preferências existentes, sem CSS específico por preset.
-- **Layout**: `data-sidebar-position` e `data-topbar-position` no `<html>` alternam sidebar esquerda/direita e topbar topo/baixo. No mobile, as regras de breakpoint mantêm a topbar no topo e transformam a sidebar em drawer.
+- **Aparência**: `data-vibrancy` controla a intensidade (`super`, `soft`, `normal` ou `classic`); os temas prontos apenas combinam preferências existentes, sem CSS específico por preset. `data-contrast="high"` aplica a paleta de alto contraste.
+- **Layout**: `data-sidebar-position` e `data-topbar-position` no `<html>` alternam sidebar esquerda/direita e topbar topo/baixo. No mobile, as regras de breakpoint mantêm a topbar no topo e transformam a sidebar em drawer. A classe `presentation-mode` no `<body>` oculta o shell durante apresentações.
 - **Etapas**: `SCHOOL_STAGES` centraliza rótulos e anos do Fundamental II e do Ensino Médio; turmas e alunos compartilham o mesmo identificador de etapa.
 - **Tipografia**: Inter (corpo) e Space Grotesk (títulos e números de destaque).
 - **Espaçamento**: escala consistente, com modo compacto controlado por `data-density`.
 - **Movimento**: animações de entrada, hover, drag, confete e transições; `data-motion="reduced"` reduz o movimento e respeita `prefers-reduced-motion`.
-- **Acessibilidade**: foco visível, rótulos ARIA nos controles, navegação por teclado, contraste nos dois temas e diálogos com foco contido.
+- **Acessibilidade**: foco visível, rótulos ARIA nos controles, navegação por teclado, contraste nos temas, alto contraste dedicado e diálogos com foco contido.
 - **Responsividade**: breakpoints para sidebar fixa, drawer mobile, grids fluidos, formulários de cadastro/opções e calendário compacto.
 
 ## Limitações e próximos passos
@@ -276,7 +291,7 @@ Este projeto é um **front-end demonstrativo**. Não há servidor, autenticaçã
 Roadmap sugerido:
 
 - [x] Interface multi-página com shell unificado
-- [x] Temas claro/escuro/sistema e cinco acentos
+- [x] Temas claro/escuro/sistema, alto contraste e cinco acentos
 - [x] Paleta de comandos, modo foco, notificações e toasts
 - [x] Board Kanban com drag and drop
 - [x] Calendário mensal com RSVP
@@ -284,7 +299,11 @@ Roadmap sugerido:
 - [x] Criação de conta de aluno e onboarding guiado
 - [x] Adaptação para Ensino Fundamental II e Ensino Médio
 - [x] Modo foco com duração personalizada de 1 minuto a 12 horas
-- [x] Opções com perfil, aparência, layout e dados
+- [x] Opções com perfil, aparência, layout, dados e atalhos
+- [x] Modo convidado com demonstração somente leitura
+- [x] Alto contraste e modo apresentação
+- [x] Filtros avançados de trabalhos e busca em coleções na paleta
+- [x] Atalhos de teclado personalizáveis
 - [ ] Backend e API REST
 - [ ] Autenticação real (JWT/sessão segura)
 - [ ] Banco de dados relacional

@@ -24,6 +24,8 @@
         root.dataset.accent = prefs.accent || 'indigo';
         root.dataset.density = prefs.density || 'comfortable';
         root.dataset.motion = prefs.motion || 'full';
+        root.dataset.vibrancy = prefs.vibrancy || 'super';
+        root.dataset.contrast = prefs.contrast === 'high' ? 'high' : 'normal';
 
         var hasSession = false;
         try {

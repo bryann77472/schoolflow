@@ -7,6 +7,7 @@ const pageState = {
   taskSearch: '',
   taskClass: 'all',
   taskPriority: 'all',
+  taskDue: 'all',
   calendarMonth: null,
   calendarSelected: null,
   adminUserQuery: ''
@@ -108,7 +109,9 @@ function initDashboard() {
         <p>${todayClasses.length ? `Seu dia tem ${utils.plural(todayClasses.length, 'aula', 'aulas')}${nextClass ? ` e a próxima começa às ${nextClass.time_start}` : ''}.` : 'Hoje não há aulas no seu cronograma.'} ${pending.length ? `Você tem ${utils.plural(pending.length, 'trabalho em aberto', 'trabalhos em aberto')}${urgent ? `, ${urgent} com prazo curto` : ''}.` : 'Tudo em dia com os trabalhos.'}</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="assignments.html">${icon('clipboard-list', 17)} Ver trabalhos</a>
-          <button class="btn btn-hero-ghost" data-action="new-task">${icon('plus', 17)} Nova tarefa</button>
+          ${canEditData()
+            ? `<button class="btn btn-hero-ghost" data-action="new-task">${icon('plus', 17)} Nova tarefa</button>`
+            : `<button class="btn btn-hero-ghost" data-action="guest-signup">${icon('user-plus', 17)} Criar conta</button>`}
           <button class="btn btn-hero-ghost" data-action="open-focus">${icon('timer', 17)} Foco</button>
         </div>
       </div>
@@ -381,11 +384,13 @@ function initAssignments() {
       <div>
         <div class="eyebrow">${icon('clipboard-list', 14)} organização</div>
         <h1>Trabalhos</h1>
-        <p class="subtitle">Visualize prazos, mova tarefas entre etapas e mantenha o ritmo. Arraste os cards para atualizar o status.</p>
+        <p class="subtitle">${canEditData() ? 'Visualize prazos, mova tarefas entre etapas e mantenha o ritmo. Arraste os cards para atualizar o status.' : 'Explore os trabalhos da demonstração em modo somente leitura.'}</p>
       </div>
       <div class="page-actions">
         <button class="btn btn-secondary" data-action="open-focus">${icon('timer', 16)} Modo foco</button>
-        <button class="btn btn-primary" data-action="new-task">${icon('plus', 17)} Novo trabalho</button>
+        ${canEditData()
+          ? `<button class="btn btn-primary" data-action="new-task">${icon('plus', 17)} Novo trabalho</button>`
+          : `<button class="btn btn-primary" data-action="guest-signup">${icon('user-plus', 17)} Criar conta</button>`}
       </div>
     </div>
 
@@ -408,26 +413,57 @@ function initAssignments() {
       </div>
     </section>
 
-    <div class="toolbar anim-up delay-2">
-      <div class="input-wrap">
-        ${icon('search', 16)}
-        <input class="input" id="task-search" type="search" placeholder="Buscar trabalho…" value="${utils.escapeHTML(pageState.taskSearch)}">
+    <section class="task-filter-bar anim-up delay-2" aria-label="Filtros avançados de trabalhos">
+      <div class="task-filter-top">
+        <div class="input-wrap task-search-wrap">
+          ${icon('search', 16)}
+          <input class="input" id="task-search" type="search" placeholder="Buscar por título, descrição ou turma…" value="${utils.escapeHTML(pageState.taskSearch)}">
+        </div>
+        <div class="segmented" aria-label="Modo de visualização">
+          <button class="${prefs.taskView === 'board' ? 'active' : ''}" data-action="task-view" data-view="board">${icon('layout-grid', 15)} Board</button>
+          <button class="${prefs.taskView === 'list' ? 'active' : ''}" data-action="task-view" data-view="list">${icon('list', 15)} Lista</button>
+        </div>
       </div>
-      <select class="select" id="task-class-filter" aria-label="Filtrar por aula">
-        <option value="all">Todas as aulas</option>
-        ${classes.map((cls) => `<option value="${cls.id}" ${String(pageState.taskClass) === String(cls.id) ? 'selected' : ''}>${utils.escapeHTML(cls.name)}</option>`).join('')}
-      </select>
-      <select class="select" id="task-priority-filter" aria-label="Filtrar por prioridade">
-        <option value="all">Toda prioridade</option>
-        <option value="high" ${pageState.taskPriority === 'high' ? 'selected' : ''}>Alta</option>
-        <option value="medium" ${pageState.taskPriority === 'medium' ? 'selected' : ''}>Média</option>
-        <option value="low" ${pageState.taskPriority === 'low' ? 'selected' : ''}>Baixa</option>
-      </select>
-      <div class="segmented" aria-label="Modo de visualização">
-        <button class="${prefs.taskView === 'board' ? 'active' : ''}" data-action="task-view" data-view="board">${icon('layout-grid', 15)} Board</button>
-        <button class="${prefs.taskView === 'list' ? 'active' : ''}" data-action="task-view" data-view="list">${icon('list', 15)} Lista</button>
+      <div class="task-filter-grid">
+        <label class="filter-field">
+          <span>Turma</span>
+          <select class="select" id="task-class-filter">
+            <option value="all">Todas as turmas</option>
+            ${classes.map((cls) => `<option value="${cls.id}" ${String(pageState.taskClass) === String(cls.id) ? 'selected' : ''}>${utils.escapeHTML(cls.name)}</option>`).join('')}
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>Prioridade</span>
+          <select class="select" id="task-priority-filter">
+            <option value="all">Toda prioridade</option>
+            <option value="high" ${pageState.taskPriority === 'high' ? 'selected' : ''}>Alta</option>
+            <option value="medium" ${pageState.taskPriority === 'medium' ? 'selected' : ''}>Média</option>
+            <option value="low" ${pageState.taskPriority === 'low' ? 'selected' : ''}>Baixa</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>Status</span>
+          <select class="select" id="task-status-filter">
+            ${statusTabs.map((tab) => `<option value="${tab.id}" ${pageState.taskStatus === tab.id ? 'selected' : ''}>${tab.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>Prazo</span>
+          <select class="select" id="task-due-filter">
+            <option value="all" ${pageState.taskDue === 'all' ? 'selected' : ''}>Todos os prazos</option>
+            <option value="overdue" ${pageState.taskDue === 'overdue' ? 'selected' : ''}>Atrasados</option>
+            <option value="today" ${pageState.taskDue === 'today' ? 'selected' : ''}>Vence hoje</option>
+            <option value="week" ${pageState.taskDue === 'week' ? 'selected' : ''}>Próximos 7 dias</option>
+            <option value="month" ${pageState.taskDue === 'month' ? 'selected' : ''}>Próximos 30 dias</option>
+          </select>
+        </label>
       </div>
-    </div>
+      <div class="task-filter-actions">
+        <span class="task-filter-summary">${getFilteredTasks().length} de ${tasks.length} trabalhos</span>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost btn-sm" data-action="clear-task-filters">${icon('rotate-ccw', 14)} Limpar filtros</button>
+      </div>
+    </section>
 
     <div class="toolbar anim-up delay-2" style="margin-top:-6px">
       <div class="status-tabs">
@@ -437,7 +473,7 @@ function initAssignments() {
           </button>`).join('')}
       </div>
       <div class="spacer"></div>
-      <span class="muted" style="font-size:.68rem">${icon('grip-vertical', 13)} arraste os cards</span>
+      <span class="muted" style="font-size:.68rem">${canEditData() ? `${icon('grip-vertical', 13)} arraste os cards` : `${icon('eye', 13)} modo somente leitura`}</span>
     </div>
 
     <div id="task-view" class="anim-up delay-3"></div>`;
@@ -451,9 +487,19 @@ function getFilteredTasks() {
   if (pageState.taskStatus !== 'all') tasks = tasks.filter((t) => t.status === pageState.taskStatus);
   if (pageState.taskClass !== 'all') tasks = tasks.filter((t) => t.class_id === Number(pageState.taskClass));
   if (pageState.taskPriority !== 'all') tasks = tasks.filter((t) => t.priority === pageState.taskPriority);
-  const query = pageState.taskSearch.trim().toLowerCase();
+  if (pageState.taskDue !== 'all') {
+    tasks = tasks.filter((t) => {
+      const days = utils.daysUntil(t.due_date);
+      if (pageState.taskDue === 'overdue') return t.status !== 'done' && days < 0;
+      if (pageState.taskDue === 'today') return days === 0;
+      if (pageState.taskDue === 'week') return days >= 0 && days <= 7;
+      if (pageState.taskDue === 'month') return days >= 0 && days <= 30;
+      return true;
+    });
+  }
+  const query = utils.normalizeSearch(pageState.taskSearch);
   if (query) {
-    tasks = tasks.filter((t) => `${t.title} ${t.description} ${getClassName(t.class_id)}`.toLowerCase().includes(query));
+    tasks = tasks.filter((t) => utils.normalizeSearch(`${t.title} ${t.description} ${getClassName(t.class_id)}`).includes(query));
   }
   return tasks.sort((a, b) => a.due_date.localeCompare(b.due_date));
 }
@@ -471,6 +517,7 @@ function renderTaskView() {
 }
 
 function renderTaskBoard(tasks) {
+  const editable = canEditData();
   const columns = [
     { id: 'todo', label: 'A fazer', color: '#64748b' },
     { id: 'doing', label: 'Em andamento', color: '#6366f1' },
@@ -490,37 +537,40 @@ function renderTaskBoard(tasks) {
           ${columnTasks.length ? columnTasks.map((task) => {
             const tone = getClassTone(task.class_id);
             return `
-              <article class="board-card ${task.status === 'done' ? 'done-card' : ''}" style="--tone:${tone}" draggable="true" data-id="${task.id}" data-action="open-task">
+              <article class="board-card ${task.status === 'done' ? 'done-card' : ''}" style="--tone:${tone}" draggable="${editable ? 'true' : 'false'}" data-id="${task.id}" data-action="open-task">
                 <div class="board-card-top">
                   ${priorityPill(task.priority)}
-                  <button class="mini-check ${task.status === 'done' ? 'checked' : ''}" data-action="complete-task" data-id="${task.id}" aria-label="Alternar conclusão" style="${task.status === 'done' ? 'background:var(--success);border-color:var(--success);color:#fff' : ''}">${icon('check', 11)}</button>
+                  ${editable ? `<button class="mini-check ${task.status === 'done' ? 'checked' : ''}" data-action="complete-task" data-id="${task.id}" aria-label="Alternar conclusão" style="${task.status === 'done' ? 'background:var(--success);border-color:var(--success);color:#fff' : ''}">${icon('check', 11)}</button>` : ''}
                 </div>
                 <h4>${utils.escapeHTML(task.title)}</h4>
                 <div class="board-card-meta">${dueChip(task)}</div>
                 <div class="board-card-foot">
                   ${classChip(task.class_id)}
-                  <span style="color:var(--muted)">${icon('grip-vertical', 13)}</span>
+                  <span style="color:var(--muted)">${editable ? icon('grip-vertical', 13) : icon('eye', 13)}</span>
                 </div>
               </article>`;
           }).join('') : `<div class="board-empty">Nenhum trabalho aqui.</div>`}
         </div>
-        ${column.id === 'todo' ? `<button class="board-add" data-action="new-task">${icon('plus', 14)} Adicionar trabalho</button>` : ''}
+        ${column.id === 'todo' && editable ? `<button class="board-add" data-action="new-task">${icon('plus', 14)} Adicionar trabalho</button>` : ''}
       </section>`;
   }).join('')}</div>`;
 }
 
 function renderTaskList(tasks) {
+  const editable = canEditData();
   if (!tasks.length) {
     return `<div class="panel empty-state">
       <div class="empty-icon">${icon('search', 22)}</div>
       <h4>Nenhum trabalho encontrado</h4>
       <p>Ajuste os filtros ou crie um novo trabalho para começar.</p>
-      <button class="btn btn-primary btn-sm" data-action="new-task">${icon('plus', 15)} Novo trabalho</button>
+      ${editable
+        ? `<button class="btn btn-primary btn-sm" data-action="new-task">${icon('plus', 15)} Novo trabalho</button>`
+        : `<button class="btn btn-primary btn-sm" data-action="guest-signup">${icon('user-plus', 15)} Criar conta</button>`}
     </div>`;
   }
   return `
     <div class="task-list-head">
-      <span>Trabalho</span><span>Aula</span><span>Status</span><span>Prazo</span><span></span>
+      <span>Trabalho</span><span>Turma</span><span>Prioridade</span><span>Status</span><span>Prazo</span><span></span>
     </div>
     <div class="task-list">
       ${tasks.map((task) => {
@@ -528,20 +578,23 @@ function renderTaskList(tasks) {
         return `
           <div class="task-row ${task.status === 'done' ? 'done' : ''}" style="--tone:${getClassTone(task.class_id)}">
             <div class="task-row-main">
-              <button class="mini-check ${task.status === 'done' ? 'checked' : ''}" data-action="complete-task" data-id="${task.id}" aria-label="Alternar conclusão" style="${task.status === 'done' ? 'background:var(--success);border-color:var(--success);color:#fff' : ''}">${icon('check', 11)}</button>
+              ${editable ? `<button class="mini-check ${task.status === 'done' ? 'checked' : ''}" data-action="complete-task" data-id="${task.id}" aria-label="Alternar conclusão" style="${task.status === 'done' ? 'background:var(--success);border-color:var(--success);color:#fff' : ''}">${icon('check', 11)}</button>` : ''}
               <div data-action="open-task" data-id="${task.id}" style="min-width:0;cursor:pointer">
                 <h4>${utils.escapeHTML(task.title)}</h4>
                 <p>${utils.escapeHTML(task.description || 'Sem descrição')}</p>
               </div>
             </div>
             ${classChip(task.class_id)}
-            <select class="select" data-task-status="${task.id}" aria-label="Status de ${utils.escapeHTML(task.title)}">
-              ${Object.entries(STATUSES).map(([key, status]) => `<option value="${key}" ${task.status === key ? 'selected' : ''}>${status.label}</option>`).join('')}
-            </select>
+            ${priorityPill(task.priority)}
+            ${editable
+              ? `<select class="select" data-task-status="${task.id}" aria-label="Status de ${utils.escapeHTML(task.title)}">
+                  ${Object.entries(STATUSES).map(([key, status]) => `<option value="${key}" ${task.status === key ? 'selected' : ''}>${status.label}</option>`).join('')}
+                </select>`
+              : `<span class="badge" style="background:color-mix(in srgb, var(--primary) 12%, transparent);color:var(--primary)">${STATUSES[task.status]?.label || task.status}</span>`}
             <span class="due ${meta.tone}">${icon('clock', 12)} ${meta.label}</span>
             <div class="table-actions">
-              <button class="icon-btn" data-action="open-task" data-id="${task.id}" title="Editar">${icon('pencil', 14)}</button>
-              <button class="icon-btn danger" data-action="delete-task" data-id="${task.id}" title="Excluir">${icon('trash-2', 14)}</button>
+              <button class="icon-btn" data-action="open-task" data-id="${task.id}" title="${editable ? 'Editar' : 'Visualizar'}">${icon(editable ? 'pencil' : 'eye', 14)}</button>
+              ${editable ? `<button class="icon-btn danger" data-action="delete-task" data-id="${task.id}" title="Excluir">${icon('trash-2', 14)}</button>` : ''}
             </div>
           </div>`;
       }).join('')}
@@ -549,6 +602,7 @@ function renderTaskList(tasks) {
 }
 
 function bindBoardDnD() {
+  if (!canEditData()) return;
   const board = document.querySelector('.board');
   if (!board || board.dataset.bound === 'true') return;
   board.dataset.bound = 'true';
@@ -606,8 +660,13 @@ function bindBoardDnD() {
 }
 
 function openTaskModal(id = null) {
+  const readonly = !canEditData();
   const task = id ? getAssignmentById(id) : null;
   if (id && !task) return;
+  if (!id && readonly) {
+    guestBlocked('criar trabalhos');
+    return;
+  }
   const classes = getScopedClasses();
   if (!classes.length) {
     toast('Nenhuma aula disponível', 'Cadastre uma aula antes de criar um trabalho.', 'warning');
@@ -616,48 +675,51 @@ function openTaskModal(id = null) {
   const defaultDate = utils.isoOffset(1);
   const selectedClass = task?.class_id || classes[0].id;
   const overlay = openModal({
-    title: task ? 'Editar trabalho' : 'Novo trabalho',
-    subtitle: task ? 'Atualize os detalhes e o andamento.' : 'Defina o prazo e acompanhe até a conclusão.',
-    iconName: task ? 'pencil' : 'clipboard-list',
+    title: task ? (readonly ? 'Detalhes do trabalho' : 'Editar trabalho') : 'Novo trabalho',
+    subtitle: readonly ? 'Modo convidado · somente leitura.' : task ? 'Atualize os detalhes e o andamento.' : 'Defina o prazo e acompanhe até a conclusão.',
+    iconName: task ? (readonly ? 'eye' : 'pencil') : 'clipboard-list',
     size: 'lg',
     body: `
       <form id="task-form" class="form-grid">
         <div class="field span-2">
           <label for="task-title">Título</label>
-          <input class="input" id="task-title" type="text" placeholder="Ex.: Lista de exercícios — Álgebra" value="${utils.escapeHTML(task?.title || '')}" required>
+          <input class="input" id="task-title" type="text" placeholder="Ex.: Lista de exercícios — Álgebra" value="${utils.escapeHTML(task?.title || '')}" ${readonly ? 'disabled' : ''} required>
         </div>
         <div class="field span-2">
           <label for="task-desc">Descrição</label>
-          <textarea class="textarea" id="task-desc" placeholder="O que precisa ser feito?">${utils.escapeHTML(task?.description || '')}</textarea>
+          <textarea class="textarea" id="task-desc" placeholder="O que precisa ser feito?" ${readonly ? 'disabled' : ''}>${utils.escapeHTML(task?.description || '')}</textarea>
         </div>
         <div class="field">
           <label for="task-class">Aula</label>
-          <select class="select" id="task-class">
+          <select class="select" id="task-class" ${readonly ? 'disabled' : ''}>
             ${classes.map((cls) => `<option value="${cls.id}" ${Number(selectedClass) === cls.id ? 'selected' : ''}>${utils.escapeHTML(cls.name)}</option>`).join('')}
           </select>
         </div>
         <div class="field">
           <label for="task-due">Data de entrega</label>
-          <input class="input" id="task-due" type="date" value="${task?.due_date || defaultDate}" required>
+          <input class="input" id="task-due" type="date" value="${task?.due_date || defaultDate}" ${readonly ? 'disabled' : ''} required>
         </div>
         <div class="field">
           <label for="task-priority">Prioridade</label>
-          <select class="select" id="task-priority">
+          <select class="select" id="task-priority" ${readonly ? 'disabled' : ''}>
             ${Object.entries(PRIORITIES).map(([key, meta]) => `<option value="${key}" ${(task?.priority || 'medium') === key ? 'selected' : ''}>${meta.label}</option>`).join('')}
           </select>
         </div>
         <div class="field">
           <label for="task-status">Status</label>
-          <select class="select" id="task-status">
+          <select class="select" id="task-status" ${readonly ? 'disabled' : ''}>
             ${Object.entries(STATUSES).map(([key, meta]) => `<option value="${key}" ${(task?.status || 'todo') === key ? 'selected' : ''}>${meta.label}</option>`).join('')}
           </select>
         </div>
       </form>`,
-    footer: `
+    footer: readonly
+      ? `<button class="btn btn-primary" data-modal-close>Fechar</button>`
+      : `
       ${task ? `<button class="btn btn-ghost" id="task-delete" style="color:var(--danger);margin-right:auto">${icon('trash-2', 15)} Excluir</button>` : ''}
       <button class="btn btn-secondary" data-modal-close>Cancelar</button>
       <button class="btn btn-primary" id="task-save">${icon('check', 16)} Salvar trabalho</button>`,
     onOpen(modal) {
+      if (readonly) return;
       modal.querySelector('#task-save').addEventListener('click', () => {
         const title = modal.querySelector('#task-title').value.trim();
         const description = modal.querySelector('#task-desc').value.trim();
@@ -712,6 +774,10 @@ function openTaskModal(id = null) {
 }
 
 function toggleTaskDone(id) {
+  if (!canEditData()) {
+    guestBlocked('concluir trabalhos');
+    return;
+  }
   const task = getAssignmentById(id);
   if (!task) return;
   const wasDone = task.status === 'done';
@@ -727,6 +793,10 @@ function toggleTaskDone(id) {
 }
 
 async function deleteTask(id) {
+  if (!canEditData()) {
+    guestBlocked('excluir trabalhos');
+    return;
+  }
   const task = getAssignmentById(id);
   if (!task) return;
   const ok = await confirmDialog({
@@ -805,11 +875,13 @@ function renderEventsPage() {
       <div>
         <div class="eyebrow">${icon('calendar-days', 14)} agenda escolar</div>
         <h1>Eventos</h1>
-        <p class="subtitle">Acompanhe o calendário da escola, confirme presença e organize sua rotina sem perder nenhum encontro.</p>
+        <p class="subtitle">${canEditData() ? 'Acompanhe o calendário da escola, confirme presença e organize sua rotina sem perder nenhum encontro.' : 'Explore o calendário da demonstração em modo somente leitura.'}</p>
       </div>
       <div class="page-actions">
         <button class="btn btn-secondary" data-action="calendar-today">${icon('target', 16)} Hoje</button>
-        <button class="btn btn-primary" data-action="new-event">${icon('plus', 17)} Novo evento</button>
+        ${canEditData()
+          ? `<button class="btn btn-primary" data-action="new-event">${icon('plus', 17)} Novo evento</button>`
+          : `<button class="btn btn-primary" data-action="guest-signup">${icon('user-plus', 17)} Criar conta</button>`}
       </div>
     </div>
 
@@ -889,7 +961,7 @@ function renderEventsPage() {
         </div>
         <div class="agenda-list">
           ${selectedEvents.length ? selectedEvents.map((event) => renderAgendaEvent(event, user)).join('') : `
-            <div class="agenda-empty">${icon('coffee', 20)}<br>Nenhum evento neste dia.<br><button class="btn btn-soft btn-sm" data-action="new-event" style="margin-top:8px">${icon('plus', 14)} Criar evento</button></div>`}
+            <div class="agenda-empty">${icon('coffee', 20)}<br>Nenhum evento neste dia.${canEditData() ? `<br><button class="btn btn-soft btn-sm" data-action="new-event" style="margin-top:8px">${icon('plus', 14)} Criar evento</button>` : ''}</div>`}
         </div>
         <div class="agenda-next">
           <h4>Próximos eventos</h4>
@@ -914,14 +986,20 @@ function renderAgendaEvent(event, user, compact = false) {
       <p>${icon('map-pin', 11)} ${utils.escapeHTML(event.location || 'Escola')}</p>
       <div class="agenda-event-foot">
         <span class="agenda-time">${icon('users', 12)} ${(event.attendees || []).length} confirmados</span>
-        <button class="rsvp-btn ${attending ? 'on' : ''}" data-action="toggle-rsvp" data-id="${event.id}" data-rsvp-id="${event.id}">
-          ${attending ? `${icon('check', 10)} Confirmado` : `${icon('plus', 10)} Confirmar`}
-        </button>
+        ${canEditData()
+          ? `<button class="rsvp-btn ${attending ? 'on' : ''}" data-action="toggle-rsvp" data-id="${event.id}" data-rsvp-id="${event.id}">
+              ${attending ? `${icon('check', 10)} Confirmado` : `${icon('plus', 10)} Confirmar`}
+            </button>`
+          : `<span class="badge">${icon('eye', 10)} Somente leitura</span>`}
       </div>
     </div>`;
 }
 
 function toggleRsvp(id) {
+  if (!canEditData()) {
+    guestBlocked('confirmar presença');
+    return;
+  }
   const event = getEventById(id);
   const user = state.currentUser;
   if (!event || !user) return;
@@ -947,6 +1025,7 @@ function openEventDetail(id) {
   const event = getEventById(id);
   const user = state.currentUser;
   if (!event) return;
+  const editable = canEditData();
   const cat = EVENT_CATEGORIES[event.category] || EVENT_CATEGORIES.academic;
   const attending = (event.attendees || []).includes(user.id);
   const attendees = (event.attendees || []).map((uid) => getUserById(uid)).filter(Boolean);
@@ -970,15 +1049,20 @@ function openEventDetail(id) {
       <div class="event-attendees">
         <div class="avatar-stack">${attendees.slice(0, 5).map((person) => avatarHTML(person.name)).join('')}${attendees.length > 5 ? `<span class="avatar more">+${attendees.length - 5}</span>` : ''}</div>
         <span><strong>${attendees.length}</strong> ${attendees.length === 1 ? 'pessoa confirmada' : 'pessoas confirmadas'}</span>
-        <button class="rsvp-btn ${attending ? 'on' : ''}" id="event-rsvp-detail" data-action="toggle-rsvp" data-id="${event.id}" data-rsvp-id="${event.id}" style="margin-left:auto">
-          ${attending ? `${icon('check', 12)} Presença confirmada` : `${icon('plus', 12)} Confirmar presença`}
-        </button>
+        ${editable
+          ? `<button class="rsvp-btn ${attending ? 'on' : ''}" id="event-rsvp-detail" data-action="toggle-rsvp" data-id="${event.id}" data-rsvp-id="${event.id}" style="margin-left:auto">
+              ${attending ? `${icon('check', 12)} Presença confirmada` : `${icon('plus', 12)} Confirmar presença`}
+            </button>`
+          : `<span class="badge" style="margin-left:auto">${icon('eye', 12)} Modo convidado</span>`}
       </div>`,
-    footer: `
+    footer: editable
+      ? `
       <button class="btn btn-ghost" id="event-delete" style="color:var(--danger);margin-right:auto">${icon('trash-2', 15)} Excluir</button>
       <button class="btn btn-secondary" id="event-edit">${icon('pencil', 15)} Editar</button>
-      <button class="btn btn-primary" data-modal-close>Fechar</button>`,
+      <button class="btn btn-primary" data-modal-close>Fechar</button>`
+      : `<button class="btn btn-primary" data-modal-close>Fechar</button>`,
     onOpen(modal) {
+      if (!editable) return;
       modal.querySelector('#event-edit').addEventListener('click', () => {
         closeModal();
         setTimeout(() => openEventModal(event.id), 180);
@@ -1004,6 +1088,10 @@ function openEventDetail(id) {
 }
 
 function openEventModal(id = null) {
+  if (!canEditData()) {
+    guestBlocked(id ? 'editar eventos' : 'criar eventos');
+    return;
+  }
   const event = id ? getEventById(id) : null;
   const classes = getScopedClasses();
   const defaultDate = utils.isoOffset(1);
@@ -1769,9 +1857,15 @@ async function removeEnrollment(id) {
 // Login
 
 function initLogin() {
+  const wantsSignup = new URLSearchParams(window.location.search).get('signup') === '1';
   if (state.currentUser) {
-    window.location.replace('dashboard.html');
-    return;
+    if (wantsSignup && isGuestUser(state.currentUser)) {
+      clearSession();
+      state.currentUser = null;
+    } else {
+      window.location.replace('dashboard.html');
+      return;
+    }
   }
 
   const loginForm = document.getElementById('login-form');
@@ -1948,8 +2042,26 @@ function initLogin() {
   document.getElementById('show-signup')?.addEventListener('click', () => showView('signup'));
   document.getElementById('show-login')?.addEventListener('click', () => showView('login'));
 
-  const emailInput = document.getElementById('email');
-  if (emailInput) setTimeout(() => emailInput.focus(), 250);
+  document.getElementById('guest-login')?.addEventListener('click', () => {
+    const guest = getGuestUser();
+    state.currentUser = guest;
+    setSession(guest);
+    const button = document.getElementById('guest-login');
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = `${icon('loader', 17)} Abrindo demonstração…`;
+    }
+    setTimeout(() => {
+      window.location.href = 'dashboard.html';
+    }, 350);
+  });
+
+  if (wantsSignup) {
+    showView('signup');
+  } else {
+    const emailInput = document.getElementById('email');
+    if (emailInput) setTimeout(() => emailInput.focus(), 250);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1978,6 +2090,14 @@ function bindPageEvents() {
         break;
       case 'task-filter':
         pageState.taskStatus = el.dataset.status;
+        initAssignments();
+        break;
+      case 'clear-task-filters':
+        pageState.taskStatus = 'all';
+        pageState.taskClass = 'all';
+        pageState.taskPriority = 'all';
+        pageState.taskDue = 'all';
+        pageState.taskSearch = '';
         initAssignments();
         break;
       case 'delete-task':
@@ -2041,6 +2161,8 @@ function bindPageEvents() {
     if (event.target.id === 'task-search') {
       pageState.taskSearch = event.target.value;
       renderTaskView();
+      const summary = document.querySelector('.task-filter-summary');
+      if (summary) summary.textContent = `${getFilteredTasks().length} de ${getScopedAssignments().length} trabalhos`;
     } else if (event.target.id === 'admin-user-search') {
       pageState.adminUserQuery = event.target.value;
       renderAdminUsersTable();
@@ -2051,15 +2173,26 @@ function bindPageEvents() {
     const target = event.target;
     if (target.id === 'task-class-filter') {
       pageState.taskClass = target.value;
-      renderTaskView();
+      initAssignments();
     } else if (target.id === 'task-priority-filter') {
       pageState.taskPriority = target.value;
-      renderTaskView();
+      initAssignments();
+    } else if (target.id === 'task-status-filter') {
+      pageState.taskStatus = target.value;
+      initAssignments();
+    } else if (target.id === 'task-due-filter') {
+      pageState.taskDue = target.value;
+      initAssignments();
     } else if (target.id === 'event-category-filter') {
       prefs.calendarCategory = target.value;
       savePrefs();
       renderEventsPage();
     } else if (target.matches('[data-task-status]')) {
+      if (!canEditData()) {
+        guestBlocked('alterar status');
+        initAssignments();
+        return;
+      }
       const task = getAssignmentById(Number(target.dataset.taskStatus));
       if (!task) return;
       const wasDone = task.status === 'done';

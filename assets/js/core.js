@@ -1,26 +1,42 @@
 // SchoolFlow — núcleo da aplicação (shell, tema, overlays, timer)
 // ---------------------------------------------------------------------------
 
+const DEFAULT_SHORTCUTS = {
+  palette: 'Ctrl+K',
+  newTask: 'N',
+  newEvent: 'E',
+  focus: 'F',
+  theme: 'T',
+  help: '?',
+  presentation: 'P'
+};
+
 const DEFAULT_PREFS = {
   theme: 'system',
   accent: 'indigo',
   vibrancy: 'super',
+  contrast: 'normal',
   density: 'comfortable',
   motion: 'full',
   sidebarCollapsed: false,
   sidebarPosition: 'left',
   topbarPosition: 'top',
+  presentationMode: false,
   settingsTab: 'appearance',
   taskView: 'board',
   adminTab: 'overview',
-  calendarCategory: 'all'
+  calendarCategory: 'all',
+  shortcuts: { ...DEFAULT_SHORTCUTS }
 };
 
 function loadPrefs() {
   try {
-    return Object.assign({}, DEFAULT_PREFS, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'));
+    const saved = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+    return Object.assign({}, DEFAULT_PREFS, saved, {
+      shortcuts: Object.assign({}, DEFAULT_SHORTCUTS, saved.shortcuts || {})
+    });
   } catch (error) {
-    return { ...DEFAULT_PREFS };
+    return { ...DEFAULT_PREFS, shortcuts: { ...DEFAULT_SHORTCUTS } };
   }
 }
 
@@ -46,6 +62,117 @@ function resolveTheme() {
   return prefs.theme;
 }
 
+function isGuestMode() {
+  return isGuestUser(state.currentUser);
+}
+
+function isHighContrast() {
+  return prefs.contrast === 'high';
+}
+
+function canUsePresentation() {
+  return canPresent(state.currentUser);
+}
+
+function guestBlocked(message = 'alterar dados') {
+  toast('Modo convidado', `Crie uma conta para ${message}.`, 'info', 3400);
+  return false;
+}
+
+function getShortcut(action) {
+  return prefs.shortcuts?.[action] || DEFAULT_SHORTCUTS[action] || '';
+}
+
+function formatShortcut(combo) {
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const parts = String(combo || '').split('+').map((part) => part.trim()).filter(Boolean);
+  const formatted = parts.map((part) => {
+    if (/^ctrl$/i.test(part)) return isMac ? '⌘' : 'Ctrl';
+    if (/^(cmd|meta)$/i.test(part)) return isMac ? '⌘' : 'Meta';
+    if (/^alt$/i.test(part)) return isMac ? '⌥' : 'Alt';
+    if (/^shift$/i.test(part)) return isMac ? '⇧' : 'Shift';
+    return part;
+  });
+  return formatted.join(isMac ? '' : '+');
+}
+
+function shortcutMatches(event, combo) {
+  if (!combo) return false;
+  const parts = String(combo).split('+').map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return false;
+  const key = parts[parts.length - 1];
+  const needCtrl = parts.slice(0, -1).some((part) => /^(ctrl|cmd|meta)$/i.test(part));
+  const needAlt = parts.slice(0, -1).some((part) => /^alt$/i.test(part));
+  const needShift = parts.slice(0, -1).some((part) => /^shift$/i.test(part));
+  const ctrl = event.ctrlKey || event.metaKey;
+  if (needCtrl !== ctrl || needAlt !== event.altKey) return false;
+  if (needShift && !event.shiftKey) return false;
+  if (!needShift && event.shiftKey && /^[a-z]$/i.test(key)) return false;
+  const eventKey = event.key === ' ' ? 'Space' : event.key;
+  return String(eventKey).toLowerCase() === key.toLowerCase();
+}
+
+function shortcutFromEvent(event) {
+  const key = event.key;
+  if (!key || ['Control', 'Shift', 'Alt', 'Meta', 'CapsLock', 'Escape', 'Tab', 'Enter'].includes(key)) return '';
+  const parts = [];
+  if (event.ctrlKey || event.metaKey) parts.push('Ctrl');
+  if (event.altKey) parts.push('Alt');
+  if (event.shiftKey && /^[a-z]$/i.test(key)) parts.push('Shift');
+  let normalized = key === ' ' ? 'Space' : key;
+  if (normalized.length === 1) normalized = normalized.toUpperCase();
+  return parts.concat(normalized).join('+');
+}
+
+function applyPresentationMode() {
+  const enabled = Boolean(prefs.presentationMode) && canUsePresentation();
+  document.body.classList.toggle('presentation-mode', enabled);
+  let exit = document.getElementById('presentation-exit');
+  if (!exit) {
+    exit = document.createElement('button');
+    exit.id = 'presentation-exit';
+    exit.className = 'presentation-exit';
+    exit.dataset.action = 'toggle-presentation';
+    exit.setAttribute('aria-label', 'Sair do modo apresentação');
+    document.body.appendChild(exit);
+  }
+  exit.hidden = !enabled;
+  exit.innerHTML = `${icon('x', 15)} Sair da apresentação`;
+}
+
+function togglePresentationMode() {
+  if (!canUsePresentation()) {
+    toast('Modo apresentação', 'Disponível para professores e administradores.', 'warning');
+    return;
+  }
+  prefs.presentationMode = !prefs.presentationMode;
+  savePrefs();
+  applyPresentationMode();
+  if (prefs.presentationMode) {
+    closePopovers();
+    document.body.classList.remove('sidebar-open');
+    toast('Modo apresentação', 'A interface foi reduzida ao conteúdo. Pressione Esc para sair.', 'info', 4200);
+  } else {
+    toast('Modo apresentação encerrado', 'A navegação voltou a aparecer.', 'info', 2600);
+  }
+}
+
+function setHighContrast(enabled) {
+  prefs.contrast = enabled ? 'high' : 'normal';
+  if (enabled) {
+    prefs.theme = 'dark';
+    prefs.vibrancy = 'classic';
+  }
+  savePrefs();
+  applyAppearance();
+  toast(
+    enabled ? 'Alto contraste ativado' : 'Alto contraste desativado',
+    enabled ? 'Cores e bordas reforçadas para melhor leitura.' : 'O tema voltou ao contraste normal.',
+    'info',
+    2800
+  );
+}
+
 function applyAppearance() {
   const root = document.documentElement;
   const resolved = resolveTheme();
@@ -54,21 +181,25 @@ function applyAppearance() {
   const vibrancy = ['super', 'soft', 'normal', 'classic'].includes(prefs.vibrancy) ? prefs.vibrancy : 'super';
   prefs.vibrancy = vibrancy;
   root.dataset.vibrancy = vibrancy;
+  root.dataset.contrast = prefs.contrast === 'high' ? 'high' : 'normal';
   root.dataset.density = prefs.density;
   root.dataset.motion = prefs.motion;
   root.dataset.sidebarPosition = prefs.sidebarPosition === 'right' ? 'right' : 'left';
   root.dataset.topbarPosition = prefs.topbarPosition === 'bottom' ? 'bottom' : 'top';
   document.body.classList.toggle('sidebar-collapsed', Boolean(prefs.sidebarCollapsed));
+  document.body.classList.toggle('guest-mode', isGuestMode());
   document.querySelectorAll('[data-theme-icon]').forEach((el) => {
     el.innerHTML = icon(resolved === 'dark' ? 'sun' : 'moon', 18);
   });
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', resolved === 'dark' ? '#08090f' : '#f4f5fa');
+  if (meta) meta.setAttribute('content', prefs.contrast === 'high' ? '#000000' : resolved === 'dark' ? '#08090f' : '#f4f5fa');
+  applyPresentationMode();
   updateTimerUI();
 }
 
 function cycleTheme() {
   const current = resolveTheme();
+  prefs.contrast = 'normal';
   prefs.theme = current === 'dark' ? 'light' : 'dark';
   savePrefs();
   applyAppearance();
@@ -78,6 +209,11 @@ function cycleTheme() {
 function restoreSession() {
   const session = getSession();
   if (!session) return;
+  if (session.role === 'convidado' || session.isGuest || session.id === 'guest') {
+    state.currentUser = getGuestUser();
+    setSession(state.currentUser);
+    return;
+  }
   const user = state.users.find((u) => u.id === Number(session.id));
   if (user) {
     state.currentUser = user;
@@ -100,7 +236,17 @@ function requireAuth() {
 function logout() {
   clearSession();
   state.currentUser = null;
+  prefs.presentationMode = false;
+  savePrefs();
   window.location.href = 'login.html';
+}
+
+function goGuestSignup() {
+  clearSession();
+  state.currentUser = null;
+  prefs.presentationMode = false;
+  savePrefs();
+  window.location.href = 'login.html?signup=1';
 }
 
 function pageLabel(page) {
@@ -136,7 +282,7 @@ function getInitials(name) {
 }
 
 function isTypingTarget(target) {
-  return target && (target.matches('input, textarea, select, [contenteditable="true"]'));
+  return Boolean(target && typeof target.matches === 'function' && target.matches('input, textarea, select, [contenteditable="true"]'));
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +335,11 @@ function sidebarTemplate(active) {
         <span class="icon">${icon('timer', 19)}</span>
         <span class="nav-text">Modo foco</span>
       </button>
+      ${canUsePresentation() ? `
+      <button class="nav-item" data-action="toggle-presentation" title="Modo apresentação">
+        <span class="icon">${icon('presentation', 19)}</span>
+        <span class="nav-text">Apresentação</span>
+      </button>` : ''}
       <button class="nav-item" data-action="open-settings" title="Opções">
         <span class="icon">${icon('settings', 19)}</span>
         <span class="nav-text">Opções</span>
@@ -201,6 +352,11 @@ function sidebarTemplate(active) {
     </nav>
 
     <div class="sidebar-footer">
+      ${isGuestMode() ? `
+      <button class="guest-sidebar-cta" data-action="guest-signup">
+        <span class="guest-sidebar-icon">${icon('sparkles', 16)}</span>
+        <span><strong>Modo convidado</strong><small>Crie uma conta para salvar tudo</small></span>
+      </button>` : ''}
       <div class="streak-card" title="${streak} dias de foco">
         <div class="streak-flame">${icon('flame', 18)}</div>
         <div class="streak-copy">
@@ -224,9 +380,16 @@ function sidebarTemplate(active) {
 
 function topbarTemplate(active) {
   const user = state.currentUser;
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  const shortcut = isMac ? '⌘K' : 'Ctrl K';
+  const shortcut = formatShortcut(getShortcut('palette'));
+  const guest = isGuestMode();
   return `
+  ${guest ? `
+  <div class="guest-strip" role="status">
+    <span class="guest-strip-copy">${icon('sparkles', 15)} <strong>Modo convidado</strong> Explore a demonstração com funções limitadas.</span>
+    <span class="spacer"></span>
+    <button class="btn btn-primary btn-sm" data-action="guest-signup">Criar conta</button>
+    <button class="btn btn-ghost btn-sm" data-action="logout">Sair</button>
+  </div>` : ''}
   <div class="topbar">
     <div class="topbar-left">
       <button class="icon-btn mobile-menu" data-action="toggle-sidebar" aria-label="Abrir menu">${icon('menu', 20)}</button>
@@ -244,12 +407,13 @@ function topbarTemplate(active) {
     </button>
 
     <div class="topbar-actions">
+      ${canEditData() ? `
       <div class="popover-wrap quick-add-wrap">
         <button class="icon-btn" data-action="toggle-quick-add" aria-label="Criar novo" title="Criar novo">
           ${icon('plus', 20)}
         </button>
         <div class="popover quick-add-menu" id="quick-add-menu">
-          <div class="popover-head"><span class="popover-title">Criar rapidamente</span><kbd>N</kbd></div>
+          <div class="popover-head"><span class="popover-title">Criar rapidamente</span><kbd>${formatShortcut(getShortcut('newTask'))}</kbd></div>
           <button class="popover-item" data-action="new-task">
             <span class="q-icon">${icon('clipboard-list', 17)}</span>
             <span><strong>Novo trabalho</strong><small>Adicione uma tarefa com prazo</small></span>
@@ -269,7 +433,7 @@ function topbarTemplate(active) {
             <span><strong>Novo usuário</strong><small>Cadastre aluno ou professor</small></span>
           </button>` : ''}
         </div>
-      </div>
+      </div>` : ''}
 
       <div class="popover-wrap notifications-wrap">
         <button class="icon-btn" data-action="toggle-notifications" aria-label="Notificações" title="Notificações">
@@ -289,6 +453,11 @@ function topbarTemplate(active) {
           </div>
         </div>
       </div>
+
+      ${canUsePresentation() ? `
+      <button class="icon-btn presentation-trigger" data-action="toggle-presentation" aria-label="Modo apresentação" title="Modo apresentação">
+        ${icon('presentation', 19)}
+      </button>` : ''}
 
       <button class="icon-btn" data-action="toggle-theme" aria-label="Alternar tema" title="Alternar tema">
         <span data-theme-icon>${icon(resolveTheme() === 'dark' ? 'sun' : 'moon', 18)}</span>
@@ -315,9 +484,10 @@ function topbarTemplate(active) {
             </div>
           </div>
           <button class="popover-item" data-action="open-settings">${icon('settings', 17)} Opções e preferências</button>
-          <button class="popover-item" data-action="open-shortcuts">${icon('keyboard', 17)} Atalhos do teclado <kbd class="shortcut">?</kbd></button>
+          <button class="popover-item" data-action="open-shortcuts">${icon('keyboard', 17)} Atalhos do teclado <kbd class="shortcut">${formatShortcut(getShortcut('help'))}</kbd></button>
+          ${guest ? `<div class="popover-sep"></div><button class="popover-item" data-action="guest-signup">${icon('user-plus', 17)} Criar conta para salvar</button>` : ''}
           <div class="popover-sep"></div>
-          <button class="popover-item" data-action="logout" style="color:var(--danger)">${icon('log-out', 17)} Sair da conta</button>
+          <button class="popover-item" data-action="logout" style="color:var(--danger)">${icon('log-out', 17)} ${guest ? 'Sair do modo convidado' : 'Sair da conta'}</button>
         </div>
       </div>
     </div>
@@ -343,6 +513,7 @@ function renderShell() {
   if (topbarRoot) topbarRoot.innerHTML = topbarTemplate(active);
   const mobileRoot = document.getElementById('mobile-nav-root');
   if (mobileRoot) mobileRoot.innerHTML = mobileNavTemplate(active);
+  applyPresentationMode();
   renderNotifications();
   updateTimerUI();
 }
@@ -623,12 +794,24 @@ const APPEARANCE_PRESETS = [
   { id: 'classico', label: 'Clássico', description: 'Sistema, neutro e atemporal', theme: 'system', accent: 'indigo', vibrancy: 'classic', themeIcon: 'monitor', iconName: 'palette', colors: ['#5b5bd6', '#8b5cf6', '#e2e8f0', '#94a3b8'] }
 ];
 
+const SHORTCUT_ACTIONS = [
+  { id: 'palette', label: 'Busca e comandos', description: 'Abre a paleta para buscar páginas, trabalhos, eventos e pessoas.' },
+  { id: 'newTask', label: 'Novo trabalho', description: 'Abre o formulário de um novo trabalho.' },
+  { id: 'newEvent', label: 'Novo evento', description: 'Abre o formulário de um novo evento.' },
+  { id: 'focus', label: 'Modo foco', description: 'Abre o timer de foco.' },
+  { id: 'theme', label: 'Alternar tema', description: 'Troca entre claro e escuro.' },
+  { id: 'help', label: 'Ajuda e atalhos', description: 'Mostra a lista de atalhos.' },
+  { id: 'presentation', label: 'Modo apresentação', description: 'Exibe apenas o conteúdo para usar em aula.' }
+];
+
 function openSettings() {
   const user = state.currentUser;
+  const guest = isGuestMode();
   const themes = [
     { id: 'light', label: 'Claro', iconName: 'sun', preview: 'light' },
     { id: 'dark', label: 'Escuro', iconName: 'moon', preview: 'dark' },
-    { id: 'system', label: 'Sistema', iconName: 'monitor', preview: 'system' }
+    { id: 'system', label: 'Sistema', iconName: 'monitor', preview: 'system' },
+    { id: 'contrast', label: 'Alto contraste', iconName: 'contrast', preview: 'contrast' }
   ];
   const vibrancies = [
     { id: 'super', label: 'Super vibrante', description: 'Cores intensas e gradientes marcantes.', preview: 'super' },
@@ -651,6 +834,7 @@ function openSettings() {
     { id: 'appearance', label: 'Aparência', iconName: 'palette' },
     { id: 'profile', label: 'Perfil', iconName: 'user' },
     { id: 'layout', label: 'Layout', iconName: 'sliders-horizontal' },
+    { id: 'shortcuts', label: 'Atalhos', iconName: 'keyboard' },
     { id: 'data', label: 'Dados', iconName: 'database' }
   ];
   const activeTab = settingsTabs.some((tab) => tab.id === prefs.settingsTab) ? prefs.settingsTab : 'appearance';
@@ -716,6 +900,12 @@ function openSettings() {
       </div>
 
       <div class="settings-panel" data-settings-panel="profile" hidden>
+        ${guest ? `
+        <div class="settings-section guest-settings-note">
+          ${icon('user', 18)}
+          <div><strong>Perfil bloqueado no modo convidado</strong><span>Crie uma conta para editar seu nome, etapa e cor do avatar.</span></div>
+          <button class="btn btn-primary btn-sm" data-action="guest-signup">Criar conta</button>
+        </div>` : ''}
         <form id="profile-form" class="profile-form" novalidate>
           <div class="profile-preview">
             <div class="avatar profile-avatar" id="profile-avatar"${avatarToneStyle({ avatarTone: currentAvatarTone })}>${getInitials(user.name)}</div>
@@ -727,39 +917,39 @@ function openSettings() {
           <div class="form-grid">
             <div class="field span-2">
               <label for="profile-name">Nome completo</label>
-              <input class="input" id="profile-name" type="text" value="${utils.escapeHTML(user.name)}" required>
+              <input class="input" id="profile-name" type="text" value="${utils.escapeHTML(user.name)}" ${guest ? 'disabled' : ''} required>
             </div>
             <div class="field span-2">
               <label for="profile-email">Email</label>
-              <input class="input" id="profile-email" type="email" value="${utils.escapeHTML(user.email)}" required>
+              <input class="input" id="profile-email" type="email" value="${utils.escapeHTML(user.email)}" ${guest ? 'disabled' : ''} required>
             </div>
             ${isStudent ? `
             <div class="field">
               <label for="profile-stage">Etapa de ensino</label>
-              <select class="select" id="profile-stage">${stageOptions}</select>
+              <select class="select" id="profile-stage" ${guest ? 'disabled' : ''}>${stageOptions}</select>
             </div>
             <div class="field">
               <label for="profile-grade">Ano/série</label>
-              <select class="select" id="profile-grade">${gradeOptions}</select>
+              <select class="select" id="profile-grade" ${guest ? 'disabled' : ''}>${gradeOptions}</select>
             </div>` : `
             <div class="field span-2">
               <label for="profile-subject">Área de atuação</label>
-              <input class="input" id="profile-subject" type="text" value="${utils.escapeHTML(user.subject || '')}" placeholder="Ex.: Matemática">
+              <input class="input" id="profile-subject" type="text" value="${utils.escapeHTML(user.subject || '')}" ${guest ? 'disabled' : ''} placeholder="Ex.: Matemática">
             </div>`}
             <div class="field span-2">
               <label>Cor do avatar</label>
               <div class="avatar-swatches">
                 ${accents.map(([key, accent]) => `
-                  <button type="button" class="accent-swatch ${currentAvatarTone === key ? 'active' : ''}" data-avatar-tone="${key}" title="${accent.label}" aria-label="${accent.label}" aria-pressed="${currentAvatarTone === key ? 'true' : 'false'}">
+                  <button type="button" class="accent-swatch ${currentAvatarTone === key ? 'active' : ''}" data-avatar-tone="${key}" title="${accent.label}" aria-label="${accent.label}" aria-pressed="${currentAvatarTone === key ? 'true' : 'false'}" ${guest ? 'disabled' : ''}>
                     <span style="--swatch:${accent.color}"></span>
                   </button>`).join('')}
               </div>
               <span class="field-hint">A cor aparece no seu avatar e no menu.</span>
             </div>
           </div>
-          <div class="settings-actions">
+          ${guest ? '' : `<div class="settings-actions">
             <button type="submit" class="btn btn-primary btn-sm" id="profile-save">${icon('check', 15)} Salvar perfil</button>
-          </div>
+          </div>`}
         </form>
       </div>
 
@@ -796,6 +986,23 @@ function openSettings() {
         </div>
       </div>
 
+      <div class="settings-panel" data-settings-panel="shortcuts" hidden>
+        <div class="settings-section">
+          <div class="settings-label">Atalhos personalizados</div>
+          <p class="settings-hint">${icon('keyboard', 13)} Clique em um atalho e pressione a combinação desejada. Use Ctrl, Alt ou Shift junto com uma tecla.</p>
+          <div class="shortcut-settings">
+            ${SHORTCUT_ACTIONS.map((action) => `
+              <div class="shortcut-setting-row">
+                <div class="shortcut-setting-copy"><strong>${action.label}</strong><span>${action.description}</span></div>
+                <button type="button" class="shortcut-capture" data-shortcut-action="${action.id}" aria-label="Alterar atalho de ${action.label}">${formatShortcut(getShortcut(action.id))}</button>
+              </div>`).join('')}
+          </div>
+          <div class="settings-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="shortcut-reset">${icon('rotate-ccw', 15)} Restaurar atalhos padrão</button>
+          </div>
+        </div>
+      </div>
+
       <div class="settings-panel" data-settings-panel="data" hidden>
         <div class="settings-section">
           <div class="settings-label">Apresentação</div>
@@ -806,10 +1013,15 @@ function openSettings() {
         </div>
         <div class="settings-section">
           <div class="settings-label">Dados</div>
+          ${guest ? `
+          <div class="settings-row">
+            <div class="settings-row-copy"><strong>Modo convidado</strong><span>As alterações de dados ficam bloqueadas nesta demonstração.</span></div>
+            <button class="btn btn-primary btn-sm" data-action="guest-signup">Criar conta</button>
+          </div>` : `
           <div class="settings-row">
             <div class="settings-row-copy"><strong>Restaurar demonstração</strong><span>Apaga alterações e volta aos dados originais.</span></div>
             <button class="btn btn-secondary btn-sm" id="pref-reset">Restaurar</button>
-          </div>
+          </div>`}
           <p class="settings-hint">${icon('database', 13)} Seus dados ficam apenas neste navegador.</p>
         </div>
       </div>`,
@@ -835,7 +1047,12 @@ function openSettings() {
       tabs.forEach((tab) => tab.addEventListener('click', () => activateTab(tab.dataset.settingsTab)));
 
       const syncControls = () => {
-        modal.querySelectorAll('[data-theme-option]').forEach((b) => b.classList.toggle('active', b.dataset.themeOption === prefs.theme));
+        modal.querySelectorAll('[data-theme-option]').forEach((b) => {
+          const active = b.dataset.themeOption === 'contrast'
+            ? prefs.contrast === 'high'
+            : b.dataset.themeOption === prefs.theme && prefs.contrast !== 'high';
+          b.classList.toggle('active', active);
+        });
         modal.querySelectorAll('[data-accent-option]').forEach((b) => b.classList.toggle('active', b.dataset.accentOption === prefs.accent));
         modal.querySelectorAll('[data-vibrancy-option]').forEach((b) => b.classList.toggle('active', b.dataset.vibrancyOption === prefs.vibrancy));
         modal.querySelectorAll('[data-preset-option]').forEach((b) => {
@@ -858,6 +1075,7 @@ function openSettings() {
           prefs.theme = preset.theme;
           prefs.accent = preset.accent;
           prefs.vibrancy = preset.vibrancy;
+          prefs.contrast = 'normal';
           savePrefs();
           applyAppearance();
           syncControls();
@@ -865,7 +1083,14 @@ function openSettings() {
       });
       modal.querySelectorAll('[data-theme-option]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          prefs.theme = btn.dataset.themeOption;
+          if (btn.dataset.themeOption === 'contrast') {
+            prefs.contrast = 'high';
+            prefs.theme = 'dark';
+            prefs.vibrancy = 'classic';
+          } else {
+            prefs.contrast = 'normal';
+            prefs.theme = btn.dataset.themeOption;
+          }
           savePrefs();
           applyAppearance();
           syncControls();
@@ -920,6 +1145,56 @@ function openSettings() {
         prefs.motion = event.target.checked ? 'reduced' : 'full';
         savePrefs();
         applyAppearance();
+      });
+
+      let captureAction = null;
+      const finishCapture = () => {
+        if (!captureAction) return;
+        const button = modal.querySelector(`[data-shortcut-action="${captureAction}"]`);
+        if (button) {
+          button.classList.remove('capturing');
+          button.textContent = formatShortcut(getShortcut(captureAction));
+        }
+        captureAction = null;
+      };
+      modal.querySelectorAll('[data-shortcut-action]').forEach((button) => {
+        button.addEventListener('click', () => {
+          finishCapture();
+          captureAction = button.dataset.shortcutAction;
+          button.classList.add('capturing');
+          button.textContent = 'Pressione…';
+          button.focus();
+        });
+      });
+      modal.addEventListener('keydown', (event) => {
+        if (!captureAction) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.key === 'Escape') {
+          finishCapture();
+          return;
+        }
+        const combo = shortcutFromEvent(event);
+        if (!combo) return;
+        const duplicate = SHORTCUT_ACTIONS.find((action) => action.id !== captureAction && getShortcut(action.id).toLowerCase() === combo.toLowerCase());
+        if (duplicate) {
+          toast('Atalho em uso', `“${duplicate.label}” já usa ${formatShortcut(combo)}.`, 'warning', 3000);
+          return;
+        }
+        const action = SHORTCUT_ACTIONS.find((item) => item.id === captureAction);
+        prefs.shortcuts[captureAction] = combo;
+        savePrefs();
+        finishCapture();
+        toast('Atalho atualizado', `${action?.label || 'Atalho'}: ${formatShortcut(combo)}.`, 'success', 2600);
+      });
+      modal.querySelector('#shortcut-reset')?.addEventListener('click', () => {
+        prefs.shortcuts = { ...DEFAULT_SHORTCUTS };
+        savePrefs();
+        modal.querySelectorAll('[data-shortcut-action]').forEach((button) => {
+          button.classList.remove('capturing');
+          button.textContent = formatShortcut(getShortcut(button.dataset.shortcutAction));
+        });
+        toast('Atalhos restaurados', 'As combinações padrão voltaram.', 'success', 2600);
       });
 
       const profileForm = modal.querySelector('#profile-form');
@@ -996,7 +1271,7 @@ function openSettings() {
         });
       }
 
-      modal.querySelector('#pref-reset').addEventListener('click', async () => {
+      modal.querySelector('#pref-reset')?.addEventListener('click', async () => {
         const ok = await confirmDialog({
           title: 'Restaurar demonstração?',
           message: 'Todas as tarefas, eventos e alterações salvas serão apagados. Você voltará para a tela de login.',
@@ -1148,26 +1423,23 @@ function maybeShowOnboarding() {
 }
 
 function openShortcuts() {
-  const shortcuts = [
-    ['Abrir busca / comandos', ['Ctrl', 'K']],
-    ['Novo trabalho', ['N']],
-    ['Novo evento', ['E']],
-    ['Modo foco', ['F']],
-    ['Alternar tema', ['T']],
-    ['Ajuda e atalhos', ['?']],
-    ['Fechar janelas', ['Esc']]
-  ];
+  const actions = SHORTCUT_ACTIONS.filter((action) => action.id !== 'presentation' || canUsePresentation());
+  const rows = actions.map((action) => [action.label, formatShortcut(getShortcut(action.id))]);
+  rows.push(['Fechar janelas', 'Esc']);
+  rows.push(['Play/pause no foco', 'Espaço']);
   openModal({
     title: 'Atalhos do teclado',
     subtitle: 'Navegue sem tirar as mãos do teclado.',
     iconName: 'keyboard',
     size: 'sm',
-    body: `<div class="shortcut-grid">${shortcuts.map(([label, keys]) => `
+    body: `<div class="shortcut-grid">${rows.map(([label, keys]) => `
       <div class="shortcut-row">
         <span>${label}</span>
-        <div class="shortcut-keys">${keys.map((key) => `<kbd>${key}</kbd>`).join('')}</div>
+        <div class="shortcut-keys"><kbd>${keys}</kbd></div>
       </div>`).join('')}</div>`,
-    footer: `<button class="btn btn-primary" data-modal-close>Entendi</button>`
+    footer: `
+      <button class="btn btn-secondary" data-action="open-settings-shortcuts">Personalizar</button>
+      <button class="btn btn-primary" data-modal-close>Entendi</button>`
   });
 }
 
@@ -1184,16 +1456,102 @@ function getCommands() {
     commands.push({ group: 'Navegação', id: 'go-admin', label: 'Ir para Administração', hint: 'Usuários, turmas e matrículas', iconName: 'shield-check', keywords: 'admin gestao', run: () => { window.location.href = 'admin.html'; } });
   }
   commands.push(
-    { group: 'Ações', id: 'new-task', label: 'Criar novo trabalho', hint: 'Adicionar tarefa com prazo', iconName: 'plus', shortcut: 'N', keywords: 'tarefa trabalho dever', run: () => { if (typeof openTaskModal === 'function') openTaskModal(); } },
-    { group: 'Ações', id: 'new-event', label: 'Criar novo evento', hint: 'Agendar no calendário', iconName: 'calendar-plus', shortcut: 'E', keywords: 'evento calendario', run: () => { if (typeof openEventModal === 'function') openEventModal(); } },
-    { group: 'Ações', id: 'focus', label: 'Iniciar sessão de foco', hint: '25, 50 min ou duração personalizada', iconName: 'timer', shortcut: 'F', keywords: 'pomodoro estudar concentrar', run: () => openFocusOverlay() },
+    { group: 'Ações', id: 'new-task', label: 'Criar novo trabalho', hint: 'Adicionar tarefa com prazo', iconName: 'plus', shortcut: formatShortcut(getShortcut('newTask')), keywords: 'tarefa trabalho dever', run: () => { if (typeof openTaskModal === 'function') openTaskModal(); } },
+    { group: 'Ações', id: 'new-event', label: 'Criar novo evento', hint: 'Agendar no calendário', iconName: 'calendar-plus', shortcut: formatShortcut(getShortcut('newEvent')), keywords: 'evento calendario', run: () => { if (typeof openEventModal === 'function') openEventModal(); } },
+    { group: 'Ações', id: 'focus', label: 'Iniciar sessão de foco', hint: '25, 50 min ou duração personalizada', iconName: 'timer', shortcut: formatShortcut(getShortcut('focus')), keywords: 'pomodoro estudar concentrar', run: () => openFocusOverlay() },
     { group: 'Ações', id: 'focus-custom', label: 'Personalizar sessão de foco', hint: 'Escolha minutos ou horas', iconName: 'timer', keywords: 'duracao personalizada horas', run: () => openFocusOverlay(true) },
-    { group: 'Preferências', id: 'toggle-theme', label: 'Alternar tema', hint: 'Claro ou escuro', iconName: 'moon', shortcut: 'T', keywords: 'dark light escuro claro', run: () => cycleTheme() },
-    { group: 'Preferências', id: 'settings', label: 'Abrir opções', hint: 'Perfil, aparência e layout', iconName: 'settings', keywords: 'configuracao cor tema perfil layout', run: () => openSettings() },
-    { group: 'Preferências', id: 'shortcuts', label: 'Ver atalhos', hint: 'Tudo que o teclado pode fazer', iconName: 'keyboard', shortcut: '?', keywords: 'ajuda teclado', run: () => openShortcuts() },
-    { group: 'Conta', id: 'logout', label: 'Sair da conta', hint: 'Encerrar sessão', iconName: 'log-out', keywords: 'sair logout', run: () => logout() }
+    { group: 'Preferências', id: 'toggle-theme', label: 'Alternar tema', hint: 'Claro ou escuro', iconName: 'moon', shortcut: formatShortcut(getShortcut('theme')), keywords: 'dark light escuro claro', run: () => cycleTheme() },
+    { group: 'Preferências', id: 'toggle-contrast', label: 'Ativar alto contraste', hint: 'Melhora a leitura com cores fortes', iconName: 'contrast', keywords: 'acessibilidade contraste acessivel', run: () => setHighContrast(!isHighContrast()) },
+    { group: 'Preferências', id: 'settings', label: 'Abrir opções', hint: 'Perfil, aparência, layout e atalhos', iconName: 'settings', keywords: 'configuracao cor tema perfil layout atalhos', run: () => openSettings() },
+    { group: 'Preferências', id: 'shortcuts', label: 'Ver atalhos', hint: 'Tudo que o teclado pode fazer', iconName: 'keyboard', shortcut: formatShortcut(getShortcut('help')), keywords: 'ajuda teclado', run: () => openShortcuts() },
+    { group: 'Conta', id: 'logout', label: isGuestMode() ? 'Sair do modo convidado' : 'Sair da conta', hint: isGuestMode() ? 'Voltar para a tela de login' : 'Encerrar sessão', iconName: 'log-out', keywords: 'sair logout', run: () => logout() }
   );
+  if (canUsePresentation()) {
+    commands.push({ group: 'Ações', id: 'presentation', label: prefs.presentationMode ? 'Sair do modo apresentação' : 'Entrar no modo apresentação', hint: 'Exibe apenas o conteúdo para usar em aula', iconName: 'presentation', shortcut: formatShortcut(getShortcut('presentation')), keywords: 'apresentacao aula projetor professor', run: () => togglePresentationMode() });
+  }
+  if (isGuestMode()) {
+    commands.push({ group: 'Conta', id: 'guest-signup', label: 'Criar conta', hint: 'Saia da demonstração e salve suas alterações', iconName: 'user-plus', keywords: 'cadastro conta convidado', run: () => goGuestSignup() });
+  }
   return commands;
+}
+
+function getCollectionResults(query) {
+  const q = utils.normalizeSearch(query);
+  if (!q) return [];
+  const matches = (value) => utils.normalizeSearch(value).includes(q);
+  const results = [];
+
+  getScopedAssignments().filter((assignment) => matches([
+    assignment.title,
+    assignment.description,
+    getClassName(assignment.class_id),
+    STATUSES[assignment.status]?.label,
+    PRIORITIES[assignment.priority]?.label
+  ].join(' '))).slice(0, 6).forEach((assignment) => {
+    results.push({
+      group: 'Trabalhos',
+      id: `task-${assignment.id}`,
+      label: assignment.title,
+      hint: `${getClassName(assignment.class_id)} · ${utils.dueMeta(assignment.due_date, assignment.status).label}`,
+      iconName: 'clipboard-list',
+      run: () => { if (typeof openTaskModal === 'function') openTaskModal(assignment.id); }
+    });
+  });
+
+  getScopedEvents().filter((event) => matches([
+    event.title,
+    event.description,
+    event.location,
+    EVENT_CATEGORIES[event.category]?.label
+  ].join(' '))).slice(0, 6).forEach((event) => {
+    results.push({
+      group: 'Eventos',
+      id: `event-${event.id}`,
+      label: event.title,
+      hint: `${utils.formatDateShort(event.date)} · ${event.location || 'Escola'}`,
+      iconName: 'calendar-days',
+      run: () => { if (typeof openEventDetail === 'function') openEventDetail(event.id); }
+    });
+  });
+
+  getScopedClasses().filter((cls) => matches([
+    cls.name,
+    cls.description,
+    cls.room,
+    getStageShort(cls.stage),
+    getUserById(cls.teacher_id)?.name
+  ].join(' '))).slice(0, 5).forEach((cls) => {
+    results.push({
+      group: 'Turmas',
+      id: `class-${cls.id}`,
+      label: cls.name,
+      hint: `${getStageShort(cls.stage)} · ${utils.getDayOfWeekName(cls.day_of_week)} ${cls.time_start}`,
+      iconName: 'school',
+      run: () => { if (typeof openClassModal === 'function') openClassModal(cls.id); }
+    });
+  });
+
+  if (isAdmin()) {
+    state.users.filter((person) => matches([
+      person.name,
+      person.email,
+      getRoleLabel(person.role),
+      person.subject,
+      person.grade,
+      getStageShort(person.stage)
+    ].join(' '))).slice(0, 6).forEach((person) => {
+      results.push({
+        group: 'Usuários',
+        id: `user-${person.id}`,
+        label: person.name,
+        hint: `${getRoleLabel(person.role)} · ${person.email}`,
+        iconName: person.role === 'admin' ? 'shield-check' : person.role === 'professor' ? 'graduation-cap' : 'user',
+        run: () => { if (typeof openUserModal === 'function') openUserModal(person.id); }
+      });
+    });
+  }
+
+  return results;
 }
 
 function openPalette() {
@@ -1204,7 +1562,7 @@ function openPalette() {
       <div class="palette" role="dialog" aria-modal="true" aria-label="Busca e comandos">
         <div class="palette-search">
           ${icon('search', 19)}
-          <input type="text" id="palette-input" placeholder="Buscar páginas, ações, trabalhos…" autocomplete="off" spellcheck="false">
+          <input type="text" id="palette-input" placeholder="Buscar páginas, trabalhos, eventos, turmas e usuários…" autocomplete="off" spellcheck="false">
           <kbd>Esc</kbd>
         </div>
         <div class="palette-list" id="palette-list"></div>
@@ -1256,20 +1614,22 @@ function closePalette() {
 function renderPalette(query) {
   const list = paletteEl?.querySelector('#palette-list');
   if (!list) return;
-  const q = query.trim().toLowerCase();
+  const q = utils.normalizeSearch(query);
   const commands = getCommands().filter((cmd) => {
     if (!q) return true;
-    return `${cmd.label} ${cmd.hint} ${cmd.keywords}`.toLowerCase().includes(q);
+    return utils.normalizeSearch(`${cmd.label} ${cmd.hint} ${cmd.keywords}`).includes(q);
   });
-  paletteState.filtered = commands;
-  paletteState.index = utils.clamp(paletteState.index, 0, Math.max(commands.length - 1, 0));
-  if (!commands.length) {
-    list.innerHTML = `<div class="palette-empty">Nenhum comando encontrado para “${utils.escapeHTML(query)}”.</div>`;
+  const results = q ? getCollectionResults(query) : [];
+  const all = [...commands, ...results];
+  paletteState.filtered = all;
+  paletteState.index = utils.clamp(paletteState.index, 0, Math.max(all.length - 1, 0));
+  if (!all.length) {
+    list.innerHTML = `<div class="palette-empty">Nenhum resultado encontrado para “${utils.escapeHTML(query)}”.</div>`;
     return;
   }
   let html = '';
   let lastGroup = '';
-  commands.forEach((cmd, index) => {
+  all.forEach((cmd, index) => {
     if (cmd.group !== lastGroup) {
       html += `<div class="palette-group-label">${cmd.group}</div>`;
       lastGroup = cmd.group;
@@ -1714,6 +2074,22 @@ function handleCoreAction(action, el) {
       closePopovers();
       openSettings();
       return true;
+    case 'open-settings-shortcuts':
+      prefs.settingsTab = 'shortcuts';
+      savePrefs();
+      closePopovers();
+      openSettings();
+      return true;
+    case 'toggle-presentation':
+      closePopovers();
+      togglePresentationMode();
+      return true;
+    case 'toggle-contrast':
+      setHighContrast(!isHighContrast());
+      return true;
+    case 'guest-signup':
+      goGuestSignup();
+      return true;
     case 'open-onboarding':
       closePopovers();
       openOnboarding(true);
@@ -1748,14 +2124,26 @@ function handleCoreAction(action, el) {
       return true;
     case 'new-task':
       closePopovers();
+      if (!canEditData()) {
+        guestBlocked('criar trabalhos');
+        return true;
+      }
       if (typeof openTaskModal === 'function') openTaskModal();
       return true;
     case 'new-event':
       closePopovers();
+      if (!canEditData()) {
+        guestBlocked('criar eventos');
+        return true;
+      }
       if (typeof openEventModal === 'function') openEventModal();
       return true;
     case 'new-user':
       closePopovers();
+      if (!canEditData()) {
+        guestBlocked('criar usuários');
+        return true;
+      }
       if (typeof openUserModal === 'function') openUserModal();
       return true;
     case 'open-task':
@@ -1765,9 +2153,17 @@ function handleCoreAction(action, el) {
       if (typeof openEventDetail === 'function') openEventDetail(Number(el.dataset.id));
       return true;
     case 'toggle-rsvp':
+      if (!canEditData()) {
+        guestBlocked('confirmar presença');
+        return true;
+      }
       if (typeof toggleRsvp === 'function') toggleRsvp(Number(el.dataset.id));
       return true;
     case 'complete-task':
+      if (!canEditData()) {
+        guestBlocked('concluir trabalhos');
+        return true;
+      }
       if (typeof toggleTaskDone === 'function') toggleTaskDone(Number(el.dataset.id));
       return true;
     default:
@@ -1791,8 +2187,11 @@ function bindGlobalEvents() {
 
   document.addEventListener('keydown', (event) => {
     if (currentPage() === 'login') return;
+    if (event.repeat) return;
 
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    const paletteShortcut = getShortcut('palette');
+    if (shortcutMatches(event, paletteShortcut)) {
+      if (isTypingTarget(event.target) && !/(ctrl|cmd|meta|alt)\+/i.test(paletteShortcut)) return;
       event.preventDefault();
       if (paletteState.open) closePalette();
       else openPalette();
@@ -1810,6 +2209,10 @@ function bindGlobalEvents() {
       }
       if (activeModal) {
         closeModal();
+        return;
+      }
+      if (document.body.classList.contains('presentation-mode')) {
+        togglePresentationMode();
         return;
       }
       closePopovers();
@@ -1846,23 +2249,34 @@ function bindGlobalEvents() {
       return;
     }
 
-    if (isTypingTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (isTypingTarget(event.target)) return;
 
-    if (event.key === '?') {
+    if (shortcutMatches(event, getShortcut('help'))) {
       event.preventDefault();
       openShortcuts();
-    } else if (event.key.toLowerCase() === 'n') {
+    } else if (shortcutMatches(event, getShortcut('newTask'))) {
       event.preventDefault();
+      if (!canEditData()) {
+        guestBlocked('criar trabalhos');
+        return;
+      }
       if (typeof openTaskModal === 'function') openTaskModal();
-    } else if (event.key.toLowerCase() === 'e') {
+    } else if (shortcutMatches(event, getShortcut('newEvent'))) {
       event.preventDefault();
+      if (!canEditData()) {
+        guestBlocked('criar eventos');
+        return;
+      }
       if (typeof openEventModal === 'function') openEventModal();
-    } else if (event.key.toLowerCase() === 'f') {
+    } else if (shortcutMatches(event, getShortcut('focus'))) {
       event.preventDefault();
       openFocusOverlay();
-    } else if (event.key.toLowerCase() === 't') {
+    } else if (shortcutMatches(event, getShortcut('theme'))) {
       event.preventDefault();
       cycleTheme();
+    } else if (shortcutMatches(event, getShortcut('presentation'))) {
+      event.preventDefault();
+      togglePresentationMode();
     }
   });
 

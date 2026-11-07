@@ -150,6 +150,14 @@ const utils = {
     const m = minutes % 60;
     if (!h) return `${m}min`;
     return m ? `${h}h ${m}min` : `${h}h`;
+  },
+
+  normalizeSearch(value) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
   }
 };
 
@@ -216,14 +224,47 @@ function getGradeOptions(stage) {
   return getStageMeta(stage)?.grades || [];
 }
 
+const GUEST_USER = {
+  id: 'guest',
+  name: 'Visitante',
+  email: 'convidado@schoolflow.demo',
+  password: '',
+  role: 'convidado',
+  stage: 'medio',
+  grade: '2º ano',
+  subject: 'Modo convidado',
+  avatarTone: 'sky',
+  onboardingDone: true,
+  isGuest: true
+};
+
+function getGuestUser() {
+  return { ...GUEST_USER };
+}
+
+function isGuestUser(user = state.currentUser) {
+  return Boolean(user && user.role === 'convidado');
+}
+
+function canEditData(user = state.currentUser) {
+  return Boolean(user && user.role !== 'convidado');
+}
+
+function canPresent(user = state.currentUser) {
+  return Boolean(user && (user.role === 'professor' || user.role === 'admin'));
+}
+
 function getRoleLabel(role) {
-  return { aluno: 'Aluno', professor: 'Professor', admin: 'Administração' }[role] || role || '';
+  return { aluno: 'Aluno', professor: 'Professor', admin: 'Administração', convidado: 'Convidado' }[role] || role || '';
 }
 
 function getUserSubtitle(user) {
   if (!user) return '';
   if (user.role === 'aluno') {
     return [user.grade, getStageShort(user.stage)].filter(Boolean).join(' · ') || 'Aluno';
+  }
+  if (user.role === 'convidado') {
+    return [user.grade, getStageShort(user.stage)].filter(Boolean).join(' · ') || 'Demonstração';
   }
   return user.subject || getRoleLabel(user.role);
 }
@@ -400,7 +441,8 @@ function setSession(user) {
     stage: user.stage || '',
     grade: user.grade || '',
     avatarTone: user.avatarTone || '',
-    onboardingDone: Boolean(user.onboardingDone)
+    onboardingDone: Boolean(user.onboardingDone),
+    isGuest: Boolean(user.isGuest || user.role === 'convidado')
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   localStorage.setItem('loggedUser', JSON.stringify(session));
@@ -432,6 +474,7 @@ function getEventById(id) {
 
 function getScopedClasses(user = state.currentUser) {
   if (!user || user.role === 'admin') return [...state.classes];
+  if (user.role === 'convidado') return state.classes.filter((c) => c.stage === user.stage);
   if (user.role === 'professor') return state.classes.filter((c) => c.teacher_id === user.id);
   const classIds = state.enrollments.filter((e) => e.student_id === user.id).map((e) => e.class_id);
   return state.classes.filter((c) => classIds.includes(c.id));
@@ -451,6 +494,12 @@ function getScopedEvents(user = state.currentUser) {
   if (!user || user.role === 'admin') return [...state.events];
   const classIds = getScopedClasses(user).map((c) => c.id);
   return state.events.filter((e) => e.is_global || e.class_id === null || classIds.includes(e.class_id));
+}
+
+function getScopedUsers(user = state.currentUser) {
+  if (!user || user.role === 'admin') return [...state.users];
+  if (user.role === 'professor') return state.users.filter((u) => u.role !== 'admin' || u.id === user.id);
+  return state.users.filter((u) => u.id === user.id || u.role === 'professor');
 }
 
 function getClassName(id) {

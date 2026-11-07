@@ -25,6 +25,7 @@
         root.dataset.density = prefs.density || 'comfortable';
         root.dataset.motion = prefs.motion || 'full';
         root.dataset.vibrancy = prefs.vibrancy || 'super';
+        root.dataset.contrast = prefs.contrast === 'high' ? 'high' : 'normal';
       } catch (error) { /* preferências indisponíveis */ }
     })();
   </script>
@@ -174,6 +175,12 @@
           <span class="badge badge-purple">Admin</span>
         </button>
       </div>
+
+      <button class="btn btn-secondary guest-login-btn" type="button" id="guest-login">
+        <span data-icon="sparkles" data-size="17"></span>
+        Explorar como convidado
+        <small>Demonstração com funções limitadas</small>
+      </button>
 
       <p class="auth-foot">
         Protótipo acadêmico · seus dados ficam apenas neste navegador.<br>
