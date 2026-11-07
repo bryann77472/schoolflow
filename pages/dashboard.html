@@ -3,184 +3,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SchoolFlow - Dashboard</title>
+  <title>Visão geral — SchoolFlow</title>
+  <meta name="description" content="Seu painel SchoolFlow: aulas do dia, trabalhos em aberto, eventos e tempo de foco.">
+  <meta name="theme-color" content="#f4f5fa">
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../assets/css/style.css">
+  <script>
+    (function () {
+      try {
+        var prefs = JSON.parse(localStorage.getItem('schoolflow.prefs.v1') || '{}');
+        var theme = prefs.theme || 'system';
+        if (theme === 'system') {
+          theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        var root = document.documentElement;
+        root.dataset.theme = theme;
+        root.dataset.accent = prefs.accent || 'indigo';
+        root.dataset.density = prefs.density || 'comfortable';
+        root.dataset.motion = prefs.motion || 'full';
+        root.dataset.vibrancy = prefs.vibrancy || 'super';
+      } catch (error) { /* preferências indisponíveis */ }
+    })();
+  </script>
 </head>
-<body>
-  <!-- Header -->
-  <header>
-    <div class="container">
-      <a href="dashboard.html" class="logo">SchoolFlow</a>
-      <nav>
-        <ul>
-          <li><a href="dashboard.html" class="active">Dashboard</a></li>
-          <li><a href="assignments.html">Trabalhos</a></li>
-          <li><a href="events.html">Eventos</a></li>
-          <li><a href="admin.html" id="admin-link" style="display: none;">Admin</a></li>
-        </ul>
-        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"></button>
-        <div class="dropdown">
-          <div class="avatar-container" onclick="toggleDropdown()">
-            <span class="avatar">A</span>
-          </div>
-          <div class="dropdown-menu" id="user-dropdown">
-            <a onclick="logout()">Logout</a>
-          </div>
-        </div>
-      </nav>
-    </div>
-  </header>
-
-  <!-- Dashboard -->
-  <main class="dashboard">
-    <div class="container">
-      <!-- Header Section -->
-      <div class="header">
-        <h1>Dashboard</h1>
-        <div class="user-info">
-          <span class="name"></span>
-          <span class="role"></span>
-          <div class="dropdown">
-            <div class="avatar" onclick="toggleDropdown()"></div>
-            <div class="dropdown-menu" id="user-dropdown">
-              <a onclick="logout()">Logout</a>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Week Calendar -->
-      <section class="week-calendar">
-        <div class="week-days">
-          <div class="week-day">Segunda</div>
-          <div class="week-day">Terça</div>
-          <div class="week-day">Quarta</div>
-          <div class="week-day">Quinta</div>
-          <div class="week-day">Sexta</div>
-        </div>
-        <div class="days-container" id="calendar-days">
-          <!-- Days rendered by JS -->
-        </div>
-      </section>
-
-      <!-- Assignments -->
-      <section class="assignments-section">
-        <h2>Trabalhos Próximos</h2>
-        <div id="assignments-list"></div>
-        <button class="btn btn-primary" style="margin-top: 1rem;" onclick="openAssignmentModal()">Adicionar Trabalho</button>
-      </section>
-
-      <!-- Events -->
-      <section class="events-section">
-        <h2>Próximos Eventos</h2>
-        <div id="events-list"></div>
-        <button class="btn btn-outline" style="margin-top: 1rem;" onclick="openEventModal()">Adicionar Evento</button>
-      </section>
-    </div>
-  </main>
-
-  <!-- Modals -->
-  <!-- Assignment Modal -->
-  <div class="modal" id="assignment-modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>Novo Trabalho</h2>
-        <button class="modal-close" onclick="closeAssignmentModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <form id="assignment-form">
-          <div class="form-group">
-            <label>Título</label>
-            <input type="text" id="assignment-title" required>
-          </div>
-          <div class="form-group">
-            <label>Descrição</label>
-            <textarea id="assignment-desc"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Data de Entrega</label>
-              <input type="date" id="assignment-due" required>
-            </div>
-            <div class="form-group">
-              <label>Aula</label>
-              <select id="assignment-class" required>
-                <option value="">Selecione uma aula</option>
-              </select>
-            </div>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeAssignmentModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="saveAssignment()">Salvar</button>
-      </div>
+<body data-page="dashboard">
+  <div class="app-shell">
+    <div id="sidebar-root" class="sidebar-root"></div>
+    <div class="app-main">
+      <div id="topbar-root" class="topbar-root"></div>
+      <main id="page" class="page" aria-live="polite"></main>
+      <div id="mobile-nav-root"></div>
     </div>
   </div>
 
-  <!-- Event Modal -->
-  <div class="modal" id="event-modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>Novo Evento</h2>
-        <button class="modal-close" onclick="closeEventModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <form id="event-form">
-          <div class="form-group">
-            <label>Título</label>
-            <input type="text" id="event-title" required>
-          </div>
-          <div class="form-group">
-            <label>Descrição</label>
-            <textarea id="event-desc"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Data</label>
-              <input type="date" id="event-date" required>
-            </div>
-            <div class="form-group">
-              <label>Horário</label>
-              <input type="time" id="event-time-start" required>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Horário Final</label>
-              <input type="time" id="event-time-end" required>
-            </div>
-            <div class="form-group">
-              <label>Local</label>
-              <input type="text" id="event-location" required>
-            </div>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeEventModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="saveEvent()">Salvar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Dropdown overlay -->
-  <div class="dropdown-overlay" onclick="toggleDropdown()" style="display: none;"></div>
+  <noscript>
+    <div class="noscript-note">O SchoolFlow precisa de JavaScript para funcionar. Ative o JavaScript no seu navegador.</div>
+  </noscript>
 
   <script src="../assets/js/data.js"></script>
-  <script src="../assets/js/app.js"></script>
-  <script>
-    function toggleDropdown() {
-      const dropdown = document.getElementById('user-dropdown');
-      dropdown.classList.toggle('active');
-    }
-    
-    // Update admin link visibility
-    document.addEventListener('DOMContentLoaded', () => {
-      if (state.currentUser && state.currentUser.role === 'admin') {
-        document.getElementById('admin-link').style.display = 'inline-block';
-      }
-    });
-  </script>
+  <script src="../assets/js/icons.js"></script>
+  <script src="../assets/js/core.js"></script>
+  <script src="../assets/js/pages.js"></script>
 </body>
 </html>

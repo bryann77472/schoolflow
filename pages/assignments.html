@@ -3,112 +3,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SchoolFlow - Trabalhos</title>
+  <title>Trabalhos — SchoolFlow</title>
+  <meta name="description" content="Organize trabalhos escolares em um quadro Kanban ou em lista, com prazos, prioridades e progresso.">
+  <meta name="theme-color" content="#f4f5fa">
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../assets/css/style.css">
+  <script>
+    (function () {
+      try {
+        var prefs = JSON.parse(localStorage.getItem('schoolflow.prefs.v1') || '{}');
+        var theme = prefs.theme || 'system';
+        if (theme === 'system') {
+          theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        var root = document.documentElement;
+        root.dataset.theme = theme;
+        root.dataset.accent = prefs.accent || 'indigo';
+        root.dataset.density = prefs.density || 'comfortable';
+        root.dataset.motion = prefs.motion || 'full';
+        root.dataset.vibrancy = prefs.vibrancy || 'super';
+      } catch (error) { /* preferências indisponíveis */ }
+    })();
+  </script>
 </head>
-<body>
-  <header>
-    <div class="container">
-      <a href="dashboard.html" class="logo">SchoolFlow</a>
-      <nav>
-        <ul>
-          <li><a href="dashboard.html">Dashboard</a></li>
-          <li><a href="assignments.html" class="active">Trabalhos</a></li>
-          <li><a href="events.html">Eventos</a></li>
-          <li><a href="admin.html" id="admin-link" style="display: none;">Admin</a></li>
-        </ul>
-        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"></button>
-        <div class="avatar-container" onclick="toggleDropdown()">
-          <span id="avatar-letter"></span>
-          <div class="dropdown-menu" id="user-dropdown">
-            <a onclick="logout()">Logout</a>
-          </div>
-        </div>
-      </nav>
-    </div>
-  </header>
-
-  <main class="dashboard">
-    <div class="container">
-      <div class="header">
-        <h1>Trabalhos</h1>
-        <div class="user-info">
-          <span class="name" id="user-name"></span>
-          <span class="role" id="user-role"></span>
-        </div>
-      </div>
-
-      <section class="assignments-section">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h2>Trabalhos</h2>
-          <button class="btn btn-primary" onclick="openAssignmentModal()">Adicionar Trabalho</button>
-        </div>
-        
-        <div id="assignments-container" style="margin-top: 1.5rem;"></div>
-      </section>
-    </div>
-  </main>
-
-  <!-- Assignment Modal -->
-  <div class="modal" id="assignment-modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>Novo Trabalho</h2>
-        <button class="modal-close" onclick="closeAssignmentModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <form id="assignment-form">
-          <div class="form-group">
-            <label>Título</label>
-            <input type="text" id="assignment-title" required>
-          </div>
-          <div class="form-group">
-            <label>Descrição</label>
-            <textarea id="assignment-desc"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Data de Entrega</label>
-              <input type="date" id="assignment-due" required>
-            </div>
-            <div class="form-group">
-              <label>Aula</label>
-              <select id="assignment-class" required>
-                <option value="">Selecione uma aula</option>
-              </select>
-            </div>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeAssignmentModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="saveAssignment()">Salvar</button>
-      </div>
+<body data-page="assignments">
+  <div class="app-shell">
+    <div id="sidebar-root" class="sidebar-root"></div>
+    <div class="app-main">
+      <div id="topbar-root" class="topbar-root"></div>
+      <main id="page" class="page" aria-live="polite"></main>
+      <div id="mobile-nav-root"></div>
     </div>
   </div>
 
+  <noscript>
+    <div class="noscript-note">O SchoolFlow precisa de JavaScript para funcionar. Ative o JavaScript no seu navegador.</div>
+  </noscript>
+
   <script src="../assets/js/data.js"></script>
-  <script src="../assets/js/app.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      if (!requireAuth()) return;
-      
-      document.getElementById('user-name').textContent = state.currentUser.name;
-      document.getElementById('user-role').textContent = state.currentUser.role;
-      document.getElementById('avatar-letter').textContent = state.currentUser.name.charAt(0).toUpperCase();
-      
-      if (state.currentUser.role === 'admin') {
-        document.getElementById('admin-link').style.display = 'inline-block';
-      }
-      
-      renderAssignmentsPage();
-      populateClassSelect();
-      updateThemeToggle();
-      
-      // Load saved theme
-      const theme = localStorage.getItem('theme') || 'light';
-      applyTheme(theme);
-    });
-  </script>
+  <script src="../assets/js/icons.js"></script>
+  <script src="../assets/js/core.js"></script>
+  <script src="../assets/js/pages.js"></script>
 </body>
 </html>
