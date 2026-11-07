@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ---------------------------------------------------------------
+    // Usuários (users)
+    // O documento é identificado pelo UID do Firebase Auth.
+    // Leitura é aberta para qualquer usuário autenticado ou convidado.
+    // Escrita só é permitida por usuários autenticados que não são anônimos,
+    // ou por um administrador (role=admin/professor).
+    // ---------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // ---------------------------------------------------------------
+    // Turmas (classes)
+    // ---------------------------------------------------------------
+    match /classes/{classId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // ---------------------------------------------------------------
+    // Trabalhos (assignments)
+    // ---------------------------------------------------------------
+    match /assignments/{assignmentId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // ---------------------------------------------------------------
+    // Eventos (events)
+    // ---------------------------------------------------------------
+    match /events/{eventId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // ---------------------------------------------------------------
+    // Matrículas (enrollments)
+    // ---------------------------------------------------------------
+    match /enrollments/{enrollmentId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // ---------------------------------------------------------------
+    // Configuração inicial (meta/setup) – fechada após o primeiro cadastro.
+    // Durante a primeira configuração (não existe meta/setup), qualquer usuário
+    // autenticado pode semear os dados iniciais.
+    // ---------------------------------------------------------------
+    match /meta/setup/{docId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+  }
+}

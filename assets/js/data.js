@@ -4,6 +4,13 @@
 const DATA_KEY = 'schoolflow.data.v4';
 const SESSION_KEY = 'schoolflow.session.v1';
 const PREFS_KEY = 'schoolflow.prefs.v1';
+const FIREBASE_COLLECTIONS = ['users', 'classes', 'assignments', 'events', 'enrollments'];
+
+const DEMO_ACCOUNTS = [
+  { role: 'aluno', name: 'Carlos Aluno', email: 'carlos@aluno.com', password: 'aluno123' },
+  { role: 'professor', name: 'Ana Professor', email: 'ana@professor.com', password: 'prof123' },
+  { role: 'admin', name: 'Admin Escola', email: 'admin@escola.com', password: 'admin123' }
+];
 
 function sfPad(n) {
   return String(n).padStart(2, '0');
@@ -393,9 +400,82 @@ const state = Object.assign({
 
 state.currentUser = null;
 
-if (!savedData) saveState();
+state.currentUser = null;
 
-function saveState() {
+// ---------------------------------------------------------------------------
+// Firebase / Firestore
+// ---------------------------------------------------------------------------
+
+let sfFirebaseUser = null;
+let sfFirestoreReady = false;
+let sfSetupExists = false;
+let sfPersistQueue = Promise.resolve();
+let sfLastPersisted = null;
+let sfPersistErrorShown = false;
+
+function sfClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function sfDefineDocId(item, docId) {
+  if (!item || typeof item !== 'object') return item;
+  Object.defineProperty(item, '_docId', {
+    value: String(docId),
+    enumerable: false,
+    writable: true,
+    configurable: true
+  });
+  return item;
+}
+
+function sfUserDocId(user) {
+  return String(user.uid || user._docId || `pending_${user.id}`);
+}
+
+function sfDocId(collection, item) {
+  return collection === 'users' ? sfUserDocId(item) : String(item.id);
+}
+
+function sfStripForStore(collection, item) {
+  const copy = { ...item };
+  delete copy.password;
+  delete copy._docId;
+  return JSON.parse(JSON.stringify(copy));
+}
+
+async function sfCommitOperations(operations) {
+  const fb = window.SF_FIREBASE;
+  if (!fb?.available || !operations.length) return;
+  for (let index = 0; index < operations.length; index += 400) {
+    const batch = fb.db.batch();
+    operations.slice(index, index + 400).forEach((operation) => {
+      const ref = fb.db.collection(operation.collection).doc(operation.docId);
+      if (operation.type === 'delete') batch.delete(ref);
+      else batch.set(ref, operation.data);
+    });
+    await batch.commit();
+  }
+}
+
+function sfSyncCurrentUserFields() {
+  if (!state.currentUser || isGuestUser(state.currentUser) || !state.currentUser.uid) return;
+  state.currentUser.focusLog = state.focusLog || {};
+  state.currentUser.focusSessions = state.focusSessions || {};
+  state.currentUser.readNotifications = state.readNotifications || [];
+}
+
+function sfMakeSnapshot() {
+  const snapshot = {};
+  FIREBASE_COLLECTIONS.forEach((collection) => {
+    snapshot[collection] = state[collection].map((item) => ({
+      docId: sfDocId(collection, item),
+      json: JSON.stringify(sfStripForStore(collection, item))
+    }));
+  });
+  return snapshot;
+}
+
+function sfWriteLocalCache() {
   const payload = {
     users: state.users,
     classes: state.classes,
@@ -409,16 +489,491 @@ function saveState() {
   try {
     localStorage.setItem(DATA_KEY, JSON.stringify(payload));
   } catch (error) {
-    console.warn('Não foi possível salvar os dados.', error);
+    console.warn('Não foi possível salvar o cache local.', error);
   }
 }
 
-function resetDemoData() {
+async function sfPersistState() {
+  sfSyncCurrentUserFields();
+  const next = sfMakeSnapshot();
+
+  if (!sfLastPersisted) {
+    sfLastPersisted = next;
+    sfWriteLocalCache();
+    return;
+  }
+
+  const canWrite = Boolean(
+    window.SF_FIREBASE?.available &&
+    sfFirestoreReady &&
+    sfFirebaseUser &&
+    state.currentUser &&
+    !isGuestUser(state.currentUser)
+  );
+
+  if (!canWrite) {
+    sfLastPersisted = next;
+    sfWriteLocalCache();
+    return;
+  }
+
+  const operations = [];
+
+  FIREBASE_COLLECTIONS.forEach((collection) => {
+    const previous = new Map(sfLastPersisted[collection].map((entry) => [entry.docId, entry.json]));
+    const current = new Map(next[collection].map((entry) => [entry.docId, entry.json]));
+
+    current.forEach((json, docId) => {
+      if (previous.get(docId) !== json) {
+        operations.push({ type: 'set', collection, docId, data: JSON.parse(json) });
+      }
+    });
+
+    previous.forEach((_json, docId) => {
+      if (!current.has(docId)) {
+        operations.push({ type: 'delete', collection, docId });
+      }
+    });
+  });
+
+  if (!operations.length) {
+    sfLastPersisted = next;
+    sfWriteLocalCache();
+    return;
+  }
+
+  try {
+    await sfCommitOperations(operations);
+    sfLastPersisted = next;
+    sfWriteLocalCache();
+    sfPersistErrorShown = false;
+  } catch (error) {
+    console.error('Falha ao salvar no Firestore.', error);
+    if (!sfPersistErrorShown && typeof toast === 'function') {
+      sfPersistErrorShown = true;
+      toast('Não foi possível salvar', sfFirebaseErrorMessage(error), 'error', 5200);
+    }
+    throw error;
+  }
+}
+
+function saveState() {
+  sfPersistQueue = sfPersistQueue.then(
+    () => sfPersistState(),
+    () => sfPersistState()
+  );
+  return sfPersistQueue;
+}
+
+function sfLoadCollection(collection) {
+  return window.SF_FIREBASE.db.collection(collection).get().then((snapshot) => snapshot.docs.map((doc) => {
+    const data = doc.data();
+    delete data.password;
+    if (collection === 'users' && !data.uid && !String(doc.id).startsWith('pending_')) {
+      data.uid = doc.id;
+    }
+    return sfDefineDocId(data, doc.id);
+  }));
+}
+
+async function sfLoadFirestoreState() {
+  const [users, classes, assignments, events, enrollments, setup] = await Promise.all([
+    sfLoadCollection('users'),
+    sfLoadCollection('classes'),
+    sfLoadCollection('assignments'),
+    sfLoadCollection('events'),
+    sfLoadCollection('enrollments'),
+    window.SF_FIREBASE.db.collection('meta').doc('setup').get()
+  ]);
+
+  state.users = users;
+  state.classes = classes;
+  state.assignments = assignments;
+  state.events = events;
+  state.enrollments = enrollments;
+  state.focusLog = {};
+  state.focusSessions = {};
+  state.readNotifications = [];
+  sfSetupExists = setup.exists;
+  sfLastPersisted = sfMakeSnapshot();
+}
+
+function sfFindProfileForAuthUser(firebaseUser) {
+  if (!firebaseUser) return null;
+  const email = String(firebaseUser.email || '').toLowerCase();
+  return state.users.find((user) => user.uid === firebaseUser.uid)
+    || state.users.find((user) => String(user.email || '').toLowerCase() === email && !user.uid)
+    || null;
+}
+
+function sfNextUserId() {
+  return Math.max(0, ...state.users.map((user) => Number(user.id) || 0)) + 1;
+}
+
+function sfCreateProfileForAuthUser(firebaseUser) {
+  const stage = 'medio';
+  const grade = getGradeOptions(stage)[0] || '1º ano';
+  const profile = {
+    id: sfNextUserId(),
+    uid: firebaseUser.uid,
+    name: firebaseUser.displayName || String(firebaseUser.email || 'Estudante').split('@')[0],
+    email: String(firebaseUser.email || '').toLowerCase(),
+    role: 'aluno',
+    stage,
+    grade,
+    subject: `${grade} · ${getStageShort(stage)}`,
+    avatarTone: 'indigo',
+    onboardingDone: false,
+    created_at: new Date().toISOString(),
+    focusLog: {},
+    focusSessions: {},
+    readNotifications: []
+  };
+  sfDefineDocId(profile, firebaseUser.uid);
+  state.users.push(profile);
+  return profile;
+}
+
+function sfApplyCurrentUserProfile(profile) {
+  state.currentUser = profile;
+  state.focusLog = profile.focusLog && typeof profile.focusLog === 'object' ? { ...profile.focusLog } : {};
+  state.focusSessions = profile.focusSessions && typeof profile.focusSessions === 'object' ? { ...profile.focusSessions } : {};
+  state.readNotifications = Array.isArray(profile.readNotifications) ? [...profile.readNotifications] : [];
+  setSession(profile);
+}
+
+function sfLinkPendingProfile(profile, firebaseUser) {
+  if (!profile || !firebaseUser) return false;
+  const needsLink = !profile.uid;
+  profile.uid = firebaseUser.uid;
+  profile.email = String(firebaseUser.email || profile.email || '').toLowerCase();
+  if (needsLink || String(profile._docId || '') !== String(firebaseUser.uid)) {
+    sfDefineDocId(profile, firebaseUser.uid);
+    return true;
+  }
+  return false;
+}
+
+function sfUseMockContentForGuest() {
+  state.users = sfClone(mockUsers).map((user) => {
+    delete user.password;
+    return sfDefineDocId(user, `pending_${user.id}`);
+  });
+  state.classes = sfClone(mockClasses).map((item) => sfDefineDocId(item, item.id));
+  state.assignments = sfClone(mockAssignments).map((item) => sfDefineDocId(item, item.id));
+  state.events = sfClone(mockEvents).map((item) => sfDefineDocId(item, item.id));
+  state.enrollments = sfClone(mockEnrollments).map((item) => sfDefineDocId(item, item.id));
+  state.focusLog = { ...mockFocusLog };
+  state.focusSessions = {};
+  state.readNotifications = [];
+  sfLastPersisted = sfMakeSnapshot();
+}
+
+async function sfEnsureContentSeed() {
+  const fb = window.SF_FIREBASE;
+  if (!fb?.available || !sfFirestoreReady || !sfFirebaseUser || sfFirebaseUser.isAnonymous || !state.currentUser) return false;
+
+  const setupRef = fb.db.collection('meta').doc('setup');
+
+  if (state.classes.length) {
+    if (!sfSetupExists && (state.currentUser.role === 'admin' || state.currentUser.role === 'professor')) {
+      await setupRef.set({
+        seededAt: fb.FieldValue.serverTimestamp(),
+        seededBy: sfFirebaseUser.uid,
+        source: 'schoolflow'
+      });
+      sfSetupExists = true;
+    }
+    return false;
+  }
+
+  if (sfSetupExists) return false;
+
+  const previousState = {
+    classes: state.classes,
+    assignments: state.assignments,
+    events: state.events,
+    enrollments: state.enrollments
+  };
+
+  state.classes = sfClone(mockClasses).map((item) => sfDefineDocId(item, item.id));
+  state.assignments = sfClone(mockAssignments).map((item) => sfDefineDocId(item, item.id));
+  state.events = sfClone(mockEvents).map((item) => sfDefineDocId(item, item.id));
+  state.enrollments = [];
+  if (state.currentUser.role === 'aluno') syncStudentEnrollments(state.currentUser);
+
+  const operations = [];
+  state.classes.forEach((item) => operations.push({ type: 'set', collection: 'classes', docId: String(item.id), data: sfStripForStore('classes', item) }));
+  state.assignments.forEach((item) => operations.push({ type: 'set', collection: 'assignments', docId: String(item.id), data: sfStripForStore('assignments', item) }));
+  state.events.forEach((item) => operations.push({ type: 'set', collection: 'events', docId: String(item.id), data: sfStripForStore('events', item) }));
+  state.enrollments.forEach((item) => operations.push({ type: 'set', collection: 'enrollments', docId: String(item.id), data: sfStripForStore('enrollments', item) }));
+
+  try {
+    await sfCommitOperations(operations);
+    await setupRef.set({
+      seededAt: fb.FieldValue.serverTimestamp(),
+      seededBy: sfFirebaseUser.uid,
+      source: 'schoolflow'
+    });
+  } catch (error) {
+    state.classes = previousState.classes;
+    state.assignments = previousState.assignments;
+    state.events = previousState.events;
+    state.enrollments = previousState.enrollments;
+    sfLastPersisted = sfMakeSnapshot();
+    throw error;
+  }
+
+  sfSetupExists = true;
+  sfLastPersisted = sfMakeSnapshot();
+  sfWriteLocalCache();
+  return true;
+}
+
+function sfUseLocalFallback(error) {
+  if (error) console.warn('Firestore indisponível; usando dados locais de demonstração.', error);
+  window.SF_DATA_SOURCE = 'local';
+  sfFirestoreReady = false;
+  state.users = sfClone(mockUsers).map((user) => {
+    delete user.password;
+    return sfDefineDocId(user, `pending_${user.id}`);
+  });
+  state.classes = sfClone(mockClasses).map((item) => sfDefineDocId(item, item.id));
+  state.assignments = sfClone(mockAssignments).map((item) => sfDefineDocId(item, item.id));
+  state.events = sfClone(mockEvents).map((item) => sfDefineDocId(item, item.id));
+  state.enrollments = sfClone(mockEnrollments).map((item) => sfDefineDocId(item, item.id));
+  state.focusLog = { ...mockFocusLog };
+  state.focusSessions = {};
+  state.readNotifications = [];
+  sfLastPersisted = sfMakeSnapshot();
+}
+
+async function sfInitializeData() {
+  const fb = window.SF_FIREBASE;
+  if (!fb?.available) {
+    window.SF_DATA_SOURCE = 'local';
+    sfUseLocalFallback();
+    return;
+  }
+
+  try {
+    sfFirebaseUser = await fb.waitForAuthUser();
+    if (!sfFirebaseUser) {
+      state.users = [];
+      state.classes = [];
+      state.assignments = [];
+      state.events = [];
+      state.enrollments = [];
+      state.focusLog = {};
+      state.focusSessions = {};
+      state.readNotifications = [];
+      sfLastPersisted = sfMakeSnapshot();
+      clearSession();
+      window.SF_DATA_SOURCE = 'firestore';
+      return;
+    }
+
+    await sfLoadFirestoreState();
+    sfFirestoreReady = true;
+    window.SF_DATA_SOURCE = 'firestore';
+
+    if (sfFirebaseUser.isAnonymous) {
+      state.currentUser = getGuestUser();
+      setSession(state.currentUser);
+      if (!state.classes.length) sfUseMockContentForGuest();
+      return;
+    }
+
+    let profile = sfFindProfileForAuthUser(sfFirebaseUser);
+    if (!profile) {
+      profile = sfCreateProfileForAuthUser(sfFirebaseUser);
+      sfApplyCurrentUserProfile(profile);
+      await saveState();
+    } else {
+      const linked = sfLinkPendingProfile(profile, sfFirebaseUser);
+      sfApplyCurrentUserProfile(profile);
+      if (linked) await saveState();
+    }
+
+    await sfEnsureContentSeed().catch((error) => {
+      console.error('Não foi possível preparar os dados iniciais.', error);
+    });
+  } catch (error) {
+    console.error('Falha ao inicializar os dados do Firebase.', error);
+    if (sfFirebaseUser?.isAnonymous) {
+      state.currentUser = getGuestUser();
+      setSession(state.currentUser);
+      sfUseLocalFallback(error);
+    } else {
+      sessionStorage.setItem('sf.authError', sfFirebaseErrorMessage(error));
+      state.currentUser = null;
+      clearSession();
+    }
+  }
+}
+
+async function sfAuthLogin(email, password) {
+  const fb = window.SF_FIREBASE;
+  if (!fb?.available) throw new Error('Firebase não carregado. Verifique a conexão e recarregue a página.');
+
+  let credential;
+  try {
+    credential = await fb.auth.signInWithEmailAndPassword(email, password);
+    sfFirebaseUser = credential.user;
+    await sfLoadFirestoreState();
+    sfFirestoreReady = true;
+    window.SF_DATA_SOURCE = 'firestore';
+
+    let profile = sfFindProfileForAuthUser(credential.user);
+    if (!profile) {
+      profile = sfCreateProfileForAuthUser(credential.user);
+      sfApplyCurrentUserProfile(profile);
+      await saveState();
+    } else {
+      const linked = sfLinkPendingProfile(profile, credential.user);
+      sfApplyCurrentUserProfile(profile);
+      if (linked) await saveState();
+    }
+
+    await sfEnsureContentSeed().catch((error) => {
+      console.error('Não foi possível preparar os dados iniciais.', error);
+    });
+    return profile;
+  } catch (error) {
+    if (credential?.user) {
+      await fb.auth.signOut().catch(() => {});
+      sfFirebaseUser = null;
+      sfFirestoreReady = false;
+    }
+    throw error;
+  }
+}
+
+async function sfAuthSignup(account) {
+  const fb = window.SF_FIREBASE;
+  if (!fb?.available) throw new Error('Firebase não carregado. Verifique a conexão e recarregue a página.');
+
+  let credential;
+  let profileSaved = false;
+  try {
+    credential = await fb.auth.createUserWithEmailAndPassword(account.email, account.password);
+    sfFirebaseUser = credential.user;
+    await sfLoadFirestoreState();
+    sfFirestoreReady = true;
+    window.SF_DATA_SOURCE = 'firestore';
+
+    const pending = state.users.find((user) => String(user.email || '').toLowerCase() === account.email && !user.uid);
+    if (pending && pending.role !== 'aluno') {
+      throw new Error('Esta conta é institucional. Peça ao administrador para liberar o acesso.');
+    }
+
+    const user = registerStudent({ ...account, uid: credential.user.uid, existing: pending });
+    state.currentUser = user;
+    sfApplyCurrentUserProfile(user);
+    await saveState();
+    profileSaved = true;
+
+    if (!state.classes.length) {
+      await sfEnsureContentSeed().catch((error) => {
+        console.error('Não foi possível preparar os dados iniciais.', error);
+      });
+    } else {
+      syncStudentEnrollments(user);
+      await saveState();
+    }
+    return user;
+  } catch (error) {
+    if (credential?.user) {
+      if (!profileSaved) {
+        try {
+          await credential.user.delete();
+        } catch (deleteError) {
+          await fb.auth.signOut().catch(() => {});
+        }
+      } else {
+        await fb.auth.signOut().catch(() => {});
+      }
+    }
+    sfFirebaseUser = null;
+    sfFirestoreReady = false;
+    throw error;
+  }
+}
+
+async function sfAuthGuest() {
+  const fb = window.SF_FIREBASE;
+  if (fb?.available) {
+    try {
+      const credential = await fb.auth.signInAnonymously();
+      sfFirebaseUser = credential.user;
+      await sfLoadFirestoreState();
+      sfFirestoreReady = true;
+      window.SF_DATA_SOURCE = 'firestore';
+      state.currentUser = getGuestUser();
+      setSession(state.currentUser);
+      if (!state.classes.length) sfUseMockContentForGuest();
+      return state.currentUser;
+    } catch (error) {
+      console.warn('Login anônimo indisponível; abrindo demonstração local.', error);
+      state.currentUser = getGuestUser();
+      setSession(state.currentUser);
+      sfUseLocalFallback();
+      return state.currentUser;
+    }
+  }
+
+  state.currentUser = getGuestUser();
+  setSession(state.currentUser);
+  sfUseLocalFallback();
+  return state.currentUser;
+}
+
+async function sfLogout() {
+  try {
+    if (window.SF_FIREBASE?.available) await window.SF_FIREBASE.auth.signOut();
+  } catch (error) {
+    console.warn('Não foi possível encerrar a sessão do Firebase.', error);
+  }
+  sfFirebaseUser = null;
+  sfFirestoreReady = false;
+  clearSession();
+  state.currentUser = null;
+}
+
+async function sfCreateAuthAccountForAdmin(email, password) {
+  const fb = window.SF_FIREBASE;
+  if (!fb?.available) throw new Error('Firebase não carregado.');
+  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(fb.config.apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, returnSecureToken: true })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const code = String(data?.error?.message || '');
+    if (code.includes('EMAIL_EXISTS')) throw new Error('Já existe uma conta de acesso com esse email.');
+    if (code.includes('WEAK_PASSWORD')) throw new Error('A senha precisa ter pelo menos 6 caracteres.');
+    if (code.includes('OPERATION_NOT_ALLOWED')) throw new Error('Cadastro por email/senha não está habilitado no Firebase.');
+    throw new Error('Não foi possível criar a conta de acesso.');
+  }
+  return data.localId;
+}
+
+async function sfSendPasswordReset(email) {
+  const fb = window.SF_FIREBASE;
+  if (!fb?.available) throw new Error('Firebase não carregado.');
+  await fb.auth.sendPasswordResetEmail(email);
+}
+
+window.SF_DATA_READY = sfInitializeData();
+
+async function resetDemoData() {
   localStorage.removeItem(DATA_KEY);
   localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem('loggedUser');
   localStorage.removeItem(PREFS_KEY);
   localStorage.removeItem('theme');
+  await sfLogout();
   window.location.href = 'login.html';
 }
 
@@ -578,21 +1133,35 @@ function registerStudent(account) {
   const stage = SCHOOL_STAGES[account.stage] ? account.stage : 'medio';
   const grades = getGradeOptions(stage);
   const grade = grades.includes(account.grade) ? account.grade : grades[0];
-  const user = {
+  const email = account.email.trim().toLowerCase();
+  const existing = account.existing || state.users.find((user) => String(user.email || '').toLowerCase() === email && !user.uid);
+  if (existing && existing.role !== 'aluno') {
+    throw new Error('Esta conta é institucional. Peça ao administrador para liberar o acesso.');
+  }
+
+  const user = existing || {
     id: Math.max(0, ...state.users.map((u) => Number(u.id) || 0)) + 1,
+    role: 'aluno',
+    avatarTone: account.avatarTone || 'indigo',
+    created_at: new Date().toISOString()
+  };
+
+  Object.assign(user, {
     name: account.name.trim(),
-    email: account.email.trim().toLowerCase(),
-    password: account.password,
+    email,
     role: 'aluno',
     stage,
     grade,
     subject: `${grade} · ${getStageShort(stage)}`,
-    avatarTone: account.avatarTone || 'indigo',
-    onboardingDone: false,
-    created_at: new Date().toISOString()
-  };
-  state.users.push(user);
+    onboardingDone: false
+  });
+  delete user.password;
+  if (account.uid) {
+    user.uid = account.uid;
+    sfDefineDocId(user, account.uid);
+  }
+
+  if (!existing) state.users.push(user);
   syncStudentEnrollments(user);
-  saveState();
   return user;
 }

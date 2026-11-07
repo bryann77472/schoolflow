@@ -3,10 +3,12 @@
 <p>
   <img src="assets/favicon.svg" width="56" height="56" alt="Logo do SchoolFlow" align="left" style="margin-right:14px">
   <strong>Sua escola em flow.</strong><br>
-  Uma interface moderna para organizar aulas, trabalhos e eventos — feita com HTML, CSS e JavaScript puro, sem build e sem backend.
+  Uma interface moderna para organizar aulas, trabalhos e eventos — feita com HTML, CSS e JavaScript puro, sem build e sem backend próprio.
 </p>
 
 <br clear="left">
+
+> **Firebase:** a versão atual usa Firebase Authentication (email/senha) e Cloud Firestore. O modo convidado continua disponível. Veja [Firebase Auth + Firestore](#firebase-auth--firestore).
 
 ## Índice
 
@@ -210,16 +212,88 @@ As datas de demonstração são geradas em relação ao dia atual, então prazos
 
 ## Persistência
 
+Com Firebase configurado, os dados principais ficam no **Cloud Firestore**:
+
+| Coleção | Conteúdo |
+|---|---|
+| `users` | Perfis dos usuários. O ID do documento é o UID do Firebase Auth. |
+| `classes` | Turmas e horários. |
+| `assignments` | Trabalhos e status. |
+| `events` | Eventos e confirmações de presença. |
+| `enrollments` | Matrículas de alunos em turmas. |
+| `meta/setup` | Marca que a configuração inicial já foi concluída. |
+
+O documento do usuário também guarda `focusLog`, `focusSessions` e `readNotifications`. A senha **não** é gravada no Firestore: ela fica exclusivamente no Firebase Authentication.
+
+O `localStorage` continua sendo usado como cache local e para preferências:
+
 | Chave | Uso |
 |---|---|
-| `schoolflow.data.v4` | Usuários, turmas, trabalhos, eventos, matrículas, foco, sessões e notificações lidas. |
-| `schoolflow.session.v1` | Sessão ativa (id, nome, email, perfil, etapa/ano e área). |
+| `schoolflow.data.v4` | Cache dos dados carregados do Firestore. |
+| `schoolflow.session.v1` | Espelho da sessão para a interface. |
 | `schoolflow.prefs.v1` | Tema, alto contraste, cor de destaque, intensidade de cor, densidade, animações, sidebar recolhida, posição da sidebar/topbar, modo apresentação, aba de opções, visão de tarefas, aba admin, filtro do calendário e atalhos personalizados. |
 | `loggedUser` | Espelho legado da sessão, mantido para compatibilidade. |
 
-A sessão de convidado usa as mesmas chaves (`schoolflow.session.v1` e `loggedUser`), com `role: 'convidado'` e `isGuest: true`. Ao criar conta ou sair, a sessão é limpa e o modo apresentação é encerrado.
+O convidado entra por autenticação anônima do Firebase e tem acesso somente leitura. Se o login anônimo ou o Firestore não estiverem disponíveis, o app abre os dados demo locais para não quebrar o modo convidado.
 
-Na primeira execução sem dados salvos, o estado demo é gravado em `schoolflow.data.v4`. Dados antigos de `schoolflow.data.v3` são ignorados; não há migração automática. Para voltar ao estado original, use **Opções → Dados → Restaurar demonstração**. Isso remove os dados salvos e encerra a sessão.
+**Restaurar demonstração** agora encerra a sessão e limpa o cache local; ele não apaga os dados compartilhados do Firestore. Para recriar os dados demo no banco, execute o script de seed descrito abaixo.
+
+## Firebase Auth + Firestore
+
+### 1. Console do Firebase
+
+No projeto `proj-schoolflow`:
+
+1. Ative **Authentication → Sign-in method → Email/Password**.
+2. Ative **Authentication → Sign-in method → Anonymous** para o modo convidado.
+3. Em **Authentication → Settings → Authorized domains**, adicione:
+   - `localhost`
+   - `theschoolflow.onrender.com`
+4. Crie o **Cloud Firestore** em modo de produção (as regras abaixo liberam o necessário).
+5. Em **Configurações do projeto → Seus apps → Web**, confirme que o config em `assets/js/firebase.js` corresponde ao app publicado.
+
+### 2. Regras do Firestore
+
+O arquivo `firestore.rules` já está pronto. Para publicar:
+
+```bash
+npm install
+npx firebase-tools login
+npx firebase-tools deploy --only firestore:rules
+```
+
+Ou copie o conteúdo de `firestore.rules` em **Firestore → Regras** no console.
+
+As regras permitem leitura para usuários autenticados (incluindo convidados anônimos), escrita de conteúdo para professores/admin e escrita limitada de `status`/`attendees` para alunos. Durante a primeira configuração, quando `meta/setup` ainda não existe, um usuário autenticado pode semear os dados iniciais.
+
+### 3. Migrar os dados demo e criar as contas de acesso
+
+O script usa o Firebase Admin SDK, cria as contas de demonstração no Authentication e grava todos os dados demo no Firestore.
+
+1. Baixe uma chave de conta de serviço em **Configurações do projeto → Contas de serviço → Gerar nova chave privada**.
+2. Guarde o JSON fora do repositório (nunca faça commit dele).
+3. Execute:
+
+```bash
+npm install
+node scripts/seed-firebase.mjs caminho/para/service-account.json
+```
+
+O script é idempotente para os usuários: se a conta já existir no Authentication, ele reaproveita o UID. Ele grava `users`, `classes`, `assignments`, `events`, `enrollments` e, por último, `meta/setup`.
+
+> As contas demo têm senhas conhecidas. Troque ou remova essas contas antes de usar o site em produção.
+
+### 4. Contas e permissões
+
+- **Aluno:** cria a própria conta pela tela de cadastro. O perfil é gravado em `users/{uid}` com `role: "aluno"`.
+- **Professor/admin:** podem ser criados no painel administrativo. O painel cria a conta no Firebase Authentication via Identity Toolkit e grava o perfil com o UID retornado.
+- O painel administrativo não altera o email de login de uma conta já existente no Authentication; use o console do Firebase se precisar trocar o email. A senha pode ser redefinida pelo botão **Enviar redefinição de senha**.
+- Excluir um usuário no painel remove o perfil e as matrículas do Firestore, mas não remove a conta do Firebase Authentication. Para remover a conta de acesso, use o console do Firebase ou o Admin SDK.
+
+### 5. Deploy no Render
+
+O site continua sendo estático; não há build obrigatório. Publique a pasta raiz e garanta que `theschoolflow.onrender.com` esteja nos domínios autorizados do Firebase Authentication. O config web do Firebase em `assets/js/firebase.js` é público por natureza; a proteção real vem das regras do Firestore.
+
 
 ## Estrutura de pastas
 

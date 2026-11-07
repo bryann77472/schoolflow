@@ -1548,6 +1548,7 @@ function bindEnrollmentForm() {
 function openUserModal(id = null) {
   if (!isAdmin()) return;
   const user = id ? getUserById(id) : null;
+  const hasAuthAccount = Boolean(user?.uid);
   const currentStage = SCHOOL_STAGES[user?.stage] ? user.stage : 'medio';
   const stageGrades = getGradeOptions(currentStage);
   const currentGrade = stageGrades.includes(user?.grade) ? user.grade : stageGrades[0];
@@ -1555,6 +1556,18 @@ function openUserModal(id = null) {
     <option value="${key}" ${currentStage === key ? 'selected' : ''}>${stage.label}</option>`).join('');
   const gradeOptions = stageGrades.map((grade) => `
     <option value="${grade}" ${currentGrade === grade ? 'selected' : ''}>${grade}</option>`).join('');
+  const accessField = hasAuthAccount
+    ? `<div class="field span-2">
+        <label>Acesso ao sistema</label>
+        <p class="muted" style="margin:0 0 8px">A senha é gerenciada pelo Firebase Authentication.</p>
+        <button type="button" class="btn btn-secondary" id="user-reset-password">${icon('mail', 16)} Enviar redefinição de senha</button>
+      </div>`
+    : `<div class="field span-2">
+        <label for="user-password">Senha de acesso</label>
+        <input class="input" id="user-password" type="text" value="" placeholder="Mínimo de 6 caracteres" required>
+        <p class="muted" style="margin:6px 0 0">A conta será criada no Firebase Authentication.</p>
+      </div>`;
+
   openModal({
     title: user ? 'Editar usuário' : 'Novo usuário',
     subtitle: user ? 'Atualize os dados do perfil.' : 'Cadastre um aluno, professor ou administrador.',
@@ -1568,7 +1581,8 @@ function openUserModal(id = null) {
         </div>
         <div class="field span-2">
           <label for="user-email">Email</label>
-          <input class="input" id="user-email" type="email" value="${utils.escapeHTML(user?.email || '')}" placeholder="maria@escola.com" required>
+          <input class="input" id="user-email" type="email" value="${utils.escapeHTML(user?.email || '')}" placeholder="maria@escola.com" required ${hasAuthAccount ? 'readonly' : ''}>
+          ${hasAuthAccount ? '<p class="muted" style="margin:6px 0 0">O email de login é gerenciado pelo Firebase Authentication.</p>' : ''}
         </div>
         <div class="field span-2">
           <label for="user-role">Perfil</label>
@@ -1590,10 +1604,7 @@ function openUserModal(id = null) {
           <label for="user-subject">Área de atuação</label>
           <input class="input" id="user-subject" type="text" value="${utils.escapeHTML(user?.role === 'aluno' ? '' : (user?.subject || ''))}" placeholder="Ex.: Matemática">
         </div>
-        <div class="field span-2">
-          <label for="user-password">${user ? 'Nova senha (opcional)' : 'Senha de acesso'}</label>
-          <input class="input" id="user-password" type="text" value="" placeholder="${user ? 'Deixe em branco para manter a atual' : 'Mínimo de 6 caracteres'}" ${user ? '' : 'required'}>
-        </div>
+        ${accessField}
       </form>`,
     footer: `
       <button class="btn btn-secondary" data-modal-close>Cancelar</button>
@@ -1616,75 +1627,115 @@ function openUserModal(id = null) {
       roleSelect.addEventListener('change', syncRoleFields);
       stageSelect.addEventListener('change', () => fillGrades(''));
       syncRoleFields();
-      modal.querySelector('#user-save').addEventListener('click', () => {
+
+      modal.querySelector('#user-reset-password')?.addEventListener('click', async () => {
+        try {
+          await sfSendPasswordReset(user.email);
+          toast('Email enviado', `Enviamos as instruções de redefinição para ${user.email}.`, 'success', 4200);
+        } catch (error) {
+          toast('Não foi possível enviar', sfFirebaseErrorMessage(error), 'error', 4200);
+        }
+      });
+
+      modal.querySelector('#user-save').addEventListener('click', async () => {
         const name = modal.querySelector('#user-name').value.trim();
         const email = modal.querySelector('#user-email').value.trim().toLowerCase();
         const role = roleSelect.value;
-        const password = modal.querySelector('#user-password').value;
-        if (!name || !email || (!user && password.length < 6)) {
-          toast('Dados incompletos', 'Preencha nome, email e uma senha com pelo menos 6 caracteres.', 'warning');
+        const passwordInput = modal.querySelector('#user-password');
+        const password = passwordInput?.value || '';
+        const pending = !user ? state.users.find((u) => String(u.email || '').toLowerCase() === email && !u.uid) : null;
+        const target = user || pending || null;
+        const saveButton = modal.querySelector('#user-save');
+
+        if (!name || !email) {
+          toast('Dados incompletos', 'Preencha nome e email.', 'warning');
+          return;
+        }
+        if (!target?.uid && password.length < 6) {
+          toast('Senha necessária', 'Defina uma senha com pelo menos 6 caracteres para criar a conta de acesso.', 'warning');
           return;
         }
         if (password && password.length < 6) {
           toast('Senha muito curta', 'Use pelo menos 6 caracteres.', 'warning');
           return;
         }
-        const duplicated = state.users.some((u) => u.email.toLowerCase() === email && u.id !== user?.id);
+        const duplicated = state.users.some((u) => String(u.email || '').toLowerCase() === email && u.id !== target?.id);
         if (duplicated) {
           toast('Email em uso', 'Já existe um usuário com esse email.', 'warning');
           return;
         }
-        if (user) {
-          const previousRole = user.role;
-          Object.assign(user, { name, email, role });
-          if (role === 'aluno') {
-            const stage = SCHOOL_STAGES[stageSelect.value] ? stageSelect.value : (user.stage || 'medio');
-            const grade = getGradeOptions(stage).includes(gradeSelect.value) ? gradeSelect.value : getGradeOptions(stage)[0];
-            user.stage = stage;
-            user.grade = grade;
-            user.subject = `${grade} · ${getStageShort(stage)}`;
-            user.avatarTone = user.avatarTone || 'indigo';
-            if (user.onboardingDone === undefined) user.onboardingDone = true;
-            syncStudentEnrollments(user);
-          } else {
-            user.subject = subjectInput.value.trim();
-            user.onboardingDone = true;
-            delete user.stage;
-            delete user.grade;
-            if (previousRole === 'aluno') {
-              state.enrollments = state.enrollments.filter((e) => e.student_id !== user.id);
-            }
-          }
-          if (password) user.password = password;
-        } else {
-          const created = {
-            id: Math.max(0, ...state.users.map((u) => Number(u.id) || 0)) + 1,
-            name,
-            email,
-            role,
-            password
-          };
-          if (role === 'aluno') {
-            const stage = SCHOOL_STAGES[stageSelect.value] ? stageSelect.value : 'medio';
-            const grade = getGradeOptions(stage).includes(gradeSelect.value) ? gradeSelect.value : getGradeOptions(stage)[0];
-            Object.assign(created, {
-              stage,
-              grade,
-              subject: `${grade} · ${getStageShort(stage)}`,
-              avatarTone: 'indigo',
-              onboardingDone: false
-            });
-          } else {
-            created.subject = subjectInput.value.trim();
-            created.onboardingDone = true;
-          }
-          state.users.push(created);
-          if (role === 'aluno') syncStudentEnrollments(created);
+
+        if (saveButton) {
+          saveButton.disabled = true;
+          saveButton.innerHTML = `${icon('loader', 16)} Salvando…`;
         }
-        saveState();
-        closeModal();
-        renderAdminPage();
-        toast(user ? 'Usuário atualizado' : 'Usuário criado', `“${name}” foi salvo com sucesso.`, 'success');
+
+        try {
+          let uid = target?.uid || null;
+          if (!uid) {
+            uid = await sfCreateAuthAccountForAdmin(email, password);
+          }
+
+          let savedUser = target;
+          if (savedUser) {
+            const previousRole = savedUser.role;
+            Object.assign(savedUser, { name, email, role });
+            if (role === 'aluno') {
+              const stage = SCHOOL_STAGES[stageSelect.value] ? stageSelect.value : (savedUser.stage || 'medio');
+              const grade = getGradeOptions(stage).includes(gradeSelect.value) ? gradeSelect.value : getGradeOptions(stage)[0];
+              savedUser.stage = stage;
+              savedUser.grade = grade;
+              savedUser.subject = `${grade} · ${getStageShort(stage)}`;
+              savedUser.avatarTone = savedUser.avatarTone || 'indigo';
+              if (savedUser.onboardingDone === undefined) savedUser.onboardingDone = true;
+              syncStudentEnrollments(savedUser);
+            } else {
+              savedUser.subject = subjectInput.value.trim();
+              savedUser.onboardingDone = true;
+              delete savedUser.stage;
+              delete savedUser.grade;
+              if (previousRole === 'aluno') {
+                state.enrollments = state.enrollments.filter((e) => e.student_id !== savedUser.id);
+              }
+            }
+          } else {
+            savedUser = {
+              id: Math.max(0, ...state.users.map((u) => Number(u.id) || 0)) + 1,
+              name,
+              email,
+              role
+            };
+            if (role === 'aluno') {
+              const stage = SCHOOL_STAGES[stageSelect.value] ? stageSelect.value : 'medio';
+              const grade = getGradeOptions(stage).includes(gradeSelect.value) ? gradeSelect.value : getGradeOptions(stage)[0];
+              Object.assign(savedUser, {
+                stage,
+                grade,
+                subject: `${grade} · ${getStageShort(stage)}`,
+                avatarTone: 'indigo',
+                onboardingDone: false
+              });
+            } else {
+              savedUser.subject = subjectInput.value.trim();
+              savedUser.onboardingDone = true;
+            }
+            state.users.push(savedUser);
+            if (role === 'aluno') syncStudentEnrollments(savedUser);
+          }
+
+          savedUser.uid = uid;
+          sfDefineDocId(savedUser, uid);
+          await saveState();
+          closeModal();
+          renderAdminPage();
+          toast(target ? 'Usuário atualizado' : 'Usuário criado', `“${name}” foi salvo com sucesso.`, 'success');
+        } catch (error) {
+          toast('Não foi possível salvar', sfFirebaseErrorMessage(error), 'error', 4800);
+          if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.innerHTML = `${icon('check', 16)} Salvar usuário`;
+          }
+        }
       });
     }
   });
@@ -1856,15 +1907,24 @@ async function removeEnrollment(id) {
 // ---------------------------------------------------------------------------
 // Login
 
-function initLogin() {
+async function initLogin() {
   const wantsSignup = new URLSearchParams(window.location.search).get('signup') === '1';
   if (state.currentUser) {
     if (wantsSignup && isGuestUser(state.currentUser)) {
-      clearSession();
-      state.currentUser = null;
+      await sfLogout();
     } else {
       window.location.replace('dashboard.html');
       return;
+    }
+  }
+
+  const pendingAuthError = sessionStorage.getItem('sf.authError');
+  if (pendingAuthError) {
+    sessionStorage.removeItem('sf.authError');
+    const box = document.getElementById('login-error');
+    if (box) {
+      box.innerHTML = `${icon('alert-circle', 15)} ${utils.escapeHTML(pendingAuthError)}`;
+      box.classList.add('show');
     }
   }
 
@@ -1916,18 +1976,18 @@ function initLogin() {
 
   document.querySelectorAll('[data-demo-role]').forEach((button) => {
     button.addEventListener('click', () => {
-      const demoUser = state.users.find((u) => u.role === button.dataset.demoRole && ['ana@professor.com', 'carlos@aluno.com', 'admin@escola.com'].includes(u.email));
-      if (!demoUser) return;
-      document.getElementById('email').value = demoUser.email;
-      document.getElementById('password').value = demoUser.password;
-      selectedRole = demoUser.role;
+      const demo = DEMO_ACCOUNTS.find((account) => account.role === button.dataset.demoRole);
+      if (!demo) return;
+      document.getElementById('email').value = demo.email;
+      document.getElementById('password').value = demo.password;
+      selectedRole = demo.role;
       roleButtons.forEach((item) => {
-        const active = item.dataset.role === demoUser.role;
+        const active = item.dataset.role === demo.role;
         item.classList.toggle('active', active);
         item.setAttribute('aria-selected', active ? 'true' : 'false');
       });
       clearError(loginError);
-      toast('Conta demo preenchida', `Use ${demoUser.email} para entrar como ${getRoleLabel(demoUser.role).toLowerCase()}.`, 'info', 3000);
+      toast('Conta demo preenchida', `Use ${demo.email} para entrar como ${getRoleLabel(demo.role).toLowerCase()}.`, 'info', 3000);
     });
   });
 
@@ -1957,38 +2017,49 @@ function initLogin() {
   }
 
   if (loginForm) {
-    loginForm.addEventListener('submit', (event) => {
+    loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       clearError(loginError);
       const email = document.getElementById('email').value.trim().toLowerCase();
       const password = document.getElementById('password').value;
       const submit = document.getElementById('login-submit');
-      const user = state.users.find((u) => u.email.toLowerCase() === email && u.password === password);
 
-      if (!user) {
-        showError(loginError, 'Email ou senha incorretos. Confira os dados e tente novamente.');
-        return;
-      }
-      if (user.role !== selectedRole) {
-        showError(loginError, `Essa conta pertence ao perfil “${getRoleLabel(user.role)}”. Selecione o perfil correto para entrar.`);
+      if (!email || !password) {
+        showError(loginError, 'Informe seu email e sua senha para entrar.');
         return;
       }
 
-      state.currentUser = user;
-      setSession(user);
       if (submit) {
         submit.disabled = true;
         submit.innerHTML = `${icon('loader', 18)} Entrando…`;
         submit.querySelector('svg')?.classList.add('spin');
       }
-      setTimeout(() => {
-        window.location.href = 'dashboard.html';
-      }, 550);
+
+      try {
+        const user = await sfAuthLogin(email, password);
+        if (user.role !== selectedRole) {
+          await sfLogout();
+          showError(loginError, `Essa conta pertence ao perfil “${getRoleLabel(user.role)}”. Selecione o perfil correto para entrar.`);
+          return;
+        }
+        toast('Bem-vindo de volta!', `Entrando como ${getRoleLabel(user.role).toLowerCase()}.`, 'success', 2200);
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 450);
+      } catch (error) {
+        console.error(error);
+        showError(loginError, sfFirebaseErrorMessage(error));
+      } finally {
+        if (submit) {
+          submit.disabled = false;
+          submit.innerHTML = `${icon('arrow-right', 18)} Entrar`;
+        }
+      }
     });
   }
 
   if (signupForm) {
-    signupForm.addEventListener('submit', (event) => {
+    signupForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       clearError(signupError);
       const name = document.getElementById('signup-name').value.trim();
@@ -2007,7 +2078,8 @@ function initLogin() {
         showError(signupError, 'Informe um email válido. Ele será usado para entrar no SchoolFlow.');
         return;
       }
-      if (state.users.some((u) => u.email.toLowerCase() === email)) {
+      const existing = state.users.find((u) => String(u.email || '').toLowerCase() === email);
+      if (existing && (existing.uid || existing.role !== 'aluno')) {
         showError(signupError, 'Já existe uma conta com esse email. Tente entrar ou use outro endereço.');
         return;
       }
@@ -2024,36 +2096,50 @@ function initLogin() {
         return;
       }
 
-      const user = registerStudent({ name, email, password, stage, grade, avatarTone: 'indigo' });
-      state.currentUser = user;
-      setSession(user);
       if (submit) {
         submit.disabled = true;
         submit.innerHTML = `${icon('loader', 18)} Criando conta…`;
         submit.querySelector('svg')?.classList.add('spin');
       }
-      toast('Conta criada!', 'Vamos conhecer o SchoolFlow juntos.', 'success', 3000);
-      setTimeout(() => {
-        window.location.href = 'dashboard.html';
-      }, 750);
+
+      try {
+        await sfAuthSignup({ name, email, password, stage, grade, avatarTone: 'indigo' });
+        toast('Conta criada!', 'Vamos conhecer o SchoolFlow juntos.', 'success', 3000);
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 650);
+      } catch (error) {
+        console.error(error);
+        showError(signupError, sfFirebaseErrorMessage(error));
+      } finally {
+        if (submit) {
+          submit.disabled = false;
+          submit.innerHTML = `${icon('user-plus', 18)} Criar conta`;
+        }
+      }
     });
   }
 
   document.getElementById('show-signup')?.addEventListener('click', () => showView('signup'));
   document.getElementById('show-login')?.addEventListener('click', () => showView('login'));
 
-  document.getElementById('guest-login')?.addEventListener('click', () => {
-    const guest = getGuestUser();
-    state.currentUser = guest;
-    setSession(guest);
+  document.getElementById('guest-login')?.addEventListener('click', async () => {
     const button = document.getElementById('guest-login');
     if (button) {
       button.disabled = true;
       button.innerHTML = `${icon('loader', 17)} Abrindo demonstração…`;
     }
-    setTimeout(() => {
+    try {
+      await sfAuthGuest();
       window.location.href = 'dashboard.html';
-    }, 350);
+    } catch (error) {
+      console.error(error);
+      if (button) {
+        button.disabled = false;
+        button.innerHTML = `${icon('user', 17)} Entrar como convidado`;
+      }
+      toast('Não foi possível abrir', sfFirebaseErrorMessage(error), 'error', 4200);
+    }
   });
 
   if (wantsSignup) {
@@ -2209,10 +2295,12 @@ function bindPageEvents() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('sf:ready', () => {
   const page = currentPage();
   if (page === 'login') {
-    initLogin();
+    initLogin().catch((error) => {
+      console.error('Falha ao iniciar a tela de login.', error);
+    });
     return;
   }
   if (!state.currentUser) return;
