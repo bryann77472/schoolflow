@@ -52,7 +52,7 @@ service cloud.firestore {
     // Durante a primeira configuração (não existe meta/setup), qualquer usuário
     // autenticado pode semear os dados iniciais.
     // ---------------------------------------------------------------
-    match /meta/setup/{docId} {
+    match /meta/{docId} {
       allow read: if true;
       allow create: if true;
       allow update, delete: if true;
