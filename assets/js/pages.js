@@ -299,6 +299,8 @@ function initDashboard() {
           <div class="focus-task">${icon('target', 13)} <span>Hoje: <strong data-focus-total>${utils.minutesToLabel(todayMinutes)}</strong> de foco · <strong data-focus-session-count>${todaySessions}</strong> <span data-focus-session-label>${todaySessions === 1 ? 'sessão' : 'sessões'}</span></span></div>
         </section>
 
+        ${musicCardHTML()}
+
         <section class="panel anim-up delay-2" style="--panel-tone:#ec4899">
           <div class="panel-head">
             <div><h2>${icon('calendar-days', 18)} Próximos eventos</h2><div class="panel-sub">Não perca nada</div></div>
@@ -349,6 +351,7 @@ function initDashboard() {
         </section>
       </aside>
     </div>`;
+  if (typeof refreshMusicRoots === 'function') refreshMusicRoots();
 }
 
 // ---------------------------------------------------------------------------

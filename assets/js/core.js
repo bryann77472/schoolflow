@@ -1776,6 +1776,7 @@ function startTimer() {
     updateTimerUI();
     if (focusTimer.remaining <= 0) completeTimer();
   }, 1000);
+  if (typeof musicOnTimerStart === 'function') musicOnTimerStart();
   updateTimerUI();
 }
 
@@ -1783,6 +1784,7 @@ function pauseTimer() {
   focusTimer.running = false;
   clearInterval(focusTimer.interval);
   focusTimer.interval = null;
+  if (typeof musicOnTimerPause === 'function') musicOnTimerPause();
   updateTimerUI();
 }
 
@@ -1869,6 +1871,8 @@ function openFocusOverlay(showCustom = false) {
   if (overlay) {
     overlay.classList.add('open');
     document.body.classList.add('modal-open');
+    const overlayRoot = overlay.querySelector('[data-music-root="overlay"]');
+    if (overlayRoot && typeof refreshMusicRoot === 'function') refreshMusicRoot(overlayRoot);
     syncFocusDurationControls();
     updateTimerUI();
     if (showCustom) setTimeout(() => focusCustomInput(overlay), 120);
@@ -1878,6 +1882,7 @@ function openFocusOverlay(showCustom = false) {
   overlay.className = 'focus-overlay';
   overlay.id = 'focus-overlay';
   overlay.innerHTML = `
+    <div class="focus-overlay-inner">
     <div class="focus-overlay-card">
       <button class="icon-btn focus-overlay-close" data-action="focus-close" aria-label="Fechar modo foco">${icon('x', 20)}</button>
       <div class="focus-overlay-eyebrow">${icon('sparkles', 14)} modo foco</div>
@@ -1925,8 +1930,12 @@ function openFocusOverlay(showCustom = false) {
         <p class="focus-custom-hint">De 1 minuto a 12 horas. Estude em blocos longos ou faça pausas curtas.</p>
       </div>
       <div class="focus-overlay-hint">${icon('flame', 12)} <span data-focus-session-count>0</span> sessões hoje · <span data-focus-total>0min</span> de foco</div>
+    </div>
+    ${typeof overlayMusicHTML === 'function' ? overlayMusicHTML() : ''}
     </div>`;
   document.body.appendChild(overlay);
+  const overlayRoot = overlay.querySelector('[data-music-root="overlay"]');
+  if (overlayRoot && typeof refreshMusicRoot === 'function') refreshMusicRoot(overlayRoot);
   document.body.classList.add('modal-open');
   requestAnimationFrame(() => overlay.classList.add('open'));
   overlay.addEventListener('click', (event) => {
@@ -2106,6 +2115,25 @@ function handleCoreAction(action, el) {
       return true;
     case 'timer-preset':
       setTimerPreset(Number(el.dataset.minutes) || 25);
+      return true;
+    case 'music-load': {
+      const root = el.closest('[data-music-root]');
+      const input = root ? root.querySelector('.music-url-input') : document.querySelector('.music-url-input');
+      if (input) setMusicFromUrl(input.value);
+      return true;
+    }
+    case 'music-preset':
+      setMusicFromUrl(el.dataset.url || '');
+      return true;
+    case 'music-clear':
+      musicPrefs.url = '';
+      saveMusicPrefs();
+      refreshMusicRoots();
+      return true;
+    case 'music-toggle':
+      musicTogglePlay();
+      return true;
+    case 'music-sync-toggle':
       return true;
     case 'logout':
       logout();
