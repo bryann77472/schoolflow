@@ -1917,23 +1917,6 @@ function initLogin() {
     });
   });
 
-  document.querySelectorAll('[data-demo-role]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const demoUser = state.users.find((u) => u.role === button.dataset.demoRole && ['ana@professor.com', 'carlos@aluno.com', 'admin@escola.com'].includes(u.email));
-      if (!demoUser) return;
-      document.getElementById('email').value = demoUser.email;
-      document.getElementById('password').value = demoUser.password;
-      selectedRole = demoUser.role;
-      roleButtons.forEach((item) => {
-        const active = item.dataset.role === demoUser.role;
-        item.classList.toggle('active', active);
-        item.setAttribute('aria-selected', active ? 'true' : 'false');
-      });
-      clearError(loginError);
-      toast('Conta demo preenchida', `Use ${demoUser.email} para entrar como ${getRoleLabel(demoUser.role).toLowerCase()}.`, 'info', 3000);
-    });
-  });
-
   const bindPasswordToggle = (toggle, input) => {
     if (!toggle || !input) return;
     toggle.addEventListener('click', () => {
@@ -1969,7 +1952,7 @@ function initLogin() {
 
       const finishLogin = (user) => {
         state.currentUser = user;
-        setSession(user);
+        if (user.role === 'convidado') setSession(user);
         if (submit) {
           submit.disabled = true;
           submit.innerHTML = `${icon('loader', 18)} Entrando…`;
@@ -1980,45 +1963,36 @@ function initLogin() {
         }, 550);
       };
 
-      // Tenta o backend primeiro; contas demo/offline continuam usando o localStorage.
       if (window.SchoolFlowAPI) {
+        submit.disabled = true;
+        submit.innerHTML = `${icon('loader', 18)} Entrando…`;
+        submit.querySelector('svg')?.classList.add('spin');
         try {
           const result = await window.SchoolFlowAPI.login(email, password);
-          const apiUser = {
-            id: result.user.id,
-            name: result.user.name,
-            email: result.user.email,
-            role: result.user.role,
-            stage: result.user.stage || '',
-            grade: result.user.grade || '',
-            subject: result.user.subject || '',
-            avatarTone: result.user.avatarTone,
-            onboardingDone: Boolean(result.user.onboardingDone),
-            password: ''
-          };
+          const apiUser = window.SchoolFlowAPI.toLocalUser(result.user);
           if (apiUser.role !== selectedRole) {
             showError(loginError, `Essa conta pertence ao perfil “${getRoleLabel(apiUser.role)}”. Selecione o perfil correto para entrar.`);
+            submit.disabled = false;
+            submit.innerHTML = `Entrar ${icon('arrow-right', 16)}`;
             return;
           }
           finishLogin(apiUser);
           return;
         } catch (apiError) {
-          // sem backend: segue com a validação local abaixo
+          submit.disabled = false;
+          submit.innerHTML = `Entrar ${icon('arrow-right', 16)}`;
+          if (apiError.status === 401) {
+            showError(loginError, 'Email ou senha incorretos. Confira os dados e tente novamente.');
+          } else if (apiError.status === 0) {
+            showError(loginError, 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.');
+          } else {
+            showError(loginError, apiError.message || 'Não foi possível entrar. Tente novamente.');
+          }
+          return;
         }
       }
 
-      const user = state.users.find((u) => u.email.toLowerCase() === email && u.password === password);
-
-      if (!user) {
-        showError(loginError, 'Email ou senha incorretos. Confira os dados e tente novamente.');
-        return;
-      }
-      if (user.role !== selectedRole) {
-        showError(loginError, `Essa conta pertence ao perfil “${getRoleLabel(user.role)}”. Selecione o perfil correto para entrar.`);
-        return;
-      }
-
-      finishLogin(user);
+      showError(loginError, 'Autenticação indisponível no momento. Tente novamente mais tarde.');
     });
   }
 
@@ -2042,10 +2016,6 @@ function initLogin() {
         showError(signupError, 'Informe um email válido. Ele será usado para entrar no SchoolFlow.');
         return;
       }
-      if (state.users.some((u) => u.email.toLowerCase() === email)) {
-        showError(signupError, 'Já existe uma conta com esse email. Tente entrar ou use outro endereço.');
-        return;
-      }
       if (!stage || !grade) {
         showError(signupError, 'Escolha sua etapa de ensino e o ano/série.');
         return;
@@ -2059,39 +2029,35 @@ function initLogin() {
         return;
       }
 
-      let user;
-      if (window.SchoolFlowAPI) {
-        try {
-          const result = await window.SchoolFlowAPI.register({ name, email, password, confirm, stage, grade });
-          user = {
-            id: result.user.id,
-            name: result.user.name,
-            email: result.user.email,
-            role: 'aluno',
-            stage: result.user.stage || stage,
-            grade: result.user.grade || grade,
-            subject: result.user.subject || '',
-            avatarTone: result.user.avatarTone || 'indigo',
-            onboardingDone: false,
-            password: ''
-          };
-        } catch (apiError) {
-          user = registerStudent({ name, email, password, stage, grade, avatarTone: 'indigo' });
-        }
-      } else {
-        user = registerStudent({ name, email, password, stage, grade, avatarTone: 'indigo' });
+      if (!window.SchoolFlowAPI) {
+        showError(signupError, 'Cadastro indisponível no momento. Tente novamente mais tarde.');
+        return;
       }
-      state.currentUser = user;
-      setSession(user);
       if (submit) {
         submit.disabled = true;
         submit.innerHTML = `${icon('loader', 18)} Criando conta…`;
         submit.querySelector('svg')?.classList.add('spin');
       }
-      toast('Conta criada!', 'Vamos conhecer o SchoolFlow juntos.', 'success', 3000);
-      setTimeout(() => {
-        window.location.href = 'dashboard.html';
-      }, 750);
+      try {
+        const result = await window.SchoolFlowAPI.register({ name, email, password, confirm, stage, grade });
+        state.currentUser = window.SchoolFlowAPI.toLocalUser(result.user);
+        toast('Conta criada!', 'Vamos conhecer o SchoolFlow juntos.', 'success', 3000);
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 750);
+      } catch (apiError) {
+        if (submit) {
+          submit.disabled = false;
+          submit.innerHTML = `Criar conta ${icon('arrow-right', 16)}`;
+        }
+        if (apiError.status === 409) {
+          showError(signupError, 'Já existe uma conta com esse email. Tente entrar ou use outro endereço.');
+        } else if (apiError.status === 0) {
+          showError(signupError, 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.');
+        } else {
+          showError(signupError, apiError.message || 'Não foi possível criar a conta. Tente novamente.');
+        }
+      }
     });
   }
 

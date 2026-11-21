@@ -77,6 +77,20 @@
     };
   }
 
+  function toLocalUser(user) {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      stage: user.stage || '',
+      grade: user.grade || '',
+      subject: user.subject || '',
+      avatarTone: user.avatarTone || 'indigo',
+      onboardingDone: Boolean(user.onboardingDone)
+    };
+  }
+
   function mapClass(item) {
     return {
       id: item.id,
@@ -150,22 +164,34 @@
     return request(path).then(function (body) { return body.items; });
   }
 
+  /** Restaura a identidade exclusivamente a partir do cookie httpOnly. */
+  function restoreIdentity() {
+    if (!ENABLED) return Promise.resolve(null);
+    return request('/auth/me')
+      .then(function (body) {
+        var user = toLocalUser(body.user);
+        ONLINE = true;
+        return user;
+      })
+      .catch(function () {
+        ONLINE = false;
+        return null;
+      });
+  }
+
   function bootstrap() {
     if (!ENABLED) return Promise.resolve(false);
     if (bootstrapPromise) return bootstrapPromise;
 
     bootstrapPromise = (function () {
-      var session = (typeof getSession === 'function') ? getSession() : null;
-      if (!session || session.role === 'convidado') {
+      var viewer = state.currentUser;
+      if (!viewer || viewer.role === 'convidado') {
         ONLINE = false;
         return Promise.resolve(false);
       }
 
       return request('/health')
         .then(function () {
-          return request('/auth/me');
-        })
-        .then(function (identity) {
           return Promise.all([
             fetchCollection('/users?limit=100'),
             fetchCollection('/classes?limit=100'),
@@ -204,9 +230,7 @@
               .filter(function (item) { return item.read; })
               .map(function (item) { return item.id; });
 
-            var current = mapUser(identity.user);
-            state.currentUser = current;
-            if (typeof setSession === 'function') setSession(current);
+            state.currentUser = toLocalUser(viewer);
 
             ONLINE = true;
             snapshot = snapshotState();
@@ -510,6 +534,8 @@
     base: BASE,
     isOnline: function () { return ONLINE; },
     request: request,
+    toLocalUser: toLocalUser,
+    restoreIdentity: restoreIdentity,
     bootstrap: bootstrap,
     scheduleSync: scheduleSync,
     sync: sync,

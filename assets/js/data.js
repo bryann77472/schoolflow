@@ -443,6 +443,8 @@ function getSession() {
 }
 
 function setSession(user) {
+  // Autenticação real: somente o cookie httpOnly do backend. Nada de sessão em localStorage.
+  if (window.SchoolFlowAPI && window.SchoolFlowAPI.isOnline() && user.role !== 'convidado') return;
   const session = {
     id: user.id,
     name: user.name,
@@ -453,10 +455,9 @@ function setSession(user) {
     grade: user.grade || '',
     avatarTone: user.avatarTone || '',
     onboardingDone: Boolean(user.onboardingDone),
-    isGuest: Boolean(user.isGuest || user.role === 'convidado')
+    isGuest: true
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  localStorage.setItem('loggedUser', JSON.stringify(session));
 }
 
 function clearSession() {

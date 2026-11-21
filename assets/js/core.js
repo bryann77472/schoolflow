@@ -206,19 +206,23 @@ function cycleTheme() {
   toast('Tema atualizado', `Modo ${prefs.theme === 'dark' ? 'escuro' : 'claro'} ativado.`, 'info', 2400);
 }
 
-function restoreSession() {
+async function restoreSession() {
+  // A sessão real vem somente do cookie httpOnly, via GET /api/auth/me.
+  if (window.SchoolFlowAPI) {
+    const user = await window.SchoolFlowAPI.restoreIdentity();
+    if (user) {
+      state.currentUser = user;
+      return;
+    }
+  }
+
+  // Modo convidado é a única sessão que permanece local (sem autenticação).
   const session = getSession();
-  if (!session) return;
-  if (session.role === 'convidado' || session.isGuest || session.id === 'guest') {
+  if (session && (session.role === 'convidado' || session.isGuest || session.id === 'guest')) {
     state.currentUser = getGuestUser();
-    setSession(state.currentUser);
     return;
   }
-  const user = state.users.find((u) => u.id === Number(session.id));
-  if (user) {
-    state.currentUser = user;
-    setSession(user);
-  }
+  state.currentUser = null;
 }
 
 function isAdmin() {
@@ -233,8 +237,8 @@ function requireAuth() {
   return true;
 }
 
-function logout() {
-  if (window.SchoolFlowAPI) window.SchoolFlowAPI.logout();
+async function logout() {
+  if (window.SchoolFlowAPI) await window.SchoolFlowAPI.logout();
   clearSession();
   state.currentUser = null;
   prefs.presentationMode = false;
@@ -2320,11 +2324,16 @@ function bindGlobalEvents() {
 }
 
 async function bootCore() {
-  restoreSession();
+  await restoreSession();
   applyAppearance();
   hydrateIcons(document);
   if (currentPage() !== 'login') {
     if (!requireAuth()) return;
+    if (state.currentUser.role === 'convidado') {
+      clearSession();
+      window.location.replace('login.html');
+      return;
+    }
     if (window.SchoolFlowAPI) await window.SchoolFlowAPI.bootstrap();
     renderShell();
   }

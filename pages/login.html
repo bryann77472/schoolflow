@@ -11,6 +11,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../assets/css/style.css">
+  <script src="../assets/js/config.js"></script>
+  <script src="../assets/js/api.js"></script>
   <script>
     (function () {
       try {
@@ -147,34 +149,7 @@
 
       <p class="auth-switch">Ainda não tem conta? <button type="button" class="link-btn" id="show-signup">Criar conta de aluno</button></p>
 
-      <div class="auth-divider">ou explore uma conta demo</div>
-
-      <div class="demo-grid">
-        <button class="demo-account" type="button" data-demo-role="aluno">
-          <span class="avatar">CA</span>
-          <span class="demo-account-copy">
-            <strong>Carlos Aluno</strong>
-            <span>carlos@aluno.com · aluno123</span>
-          </span>
-          <span class="badge badge-primary">Aluno</span>
-        </button>
-        <button class="demo-account" type="button" data-demo-role="professor">
-          <span class="avatar">AP</span>
-          <span class="demo-account-copy">
-            <strong>Ana Professor</strong>
-            <span>ana@professor.com · prof123</span>
-          </span>
-          <span class="badge badge-success">Professor</span>
-        </button>
-        <button class="demo-account" type="button" data-demo-role="admin">
-          <span class="avatar">AE</span>
-          <span class="demo-account-copy">
-            <strong>Admin Escola</strong>
-            <span>admin@escola.com · admin123</span>
-          </span>
-          <span class="badge badge-purple">Admin</span>
-        </button>
-      </div>
+      <div class="auth-divider">ou explore como convidado</div>
 
       <button class="btn btn-secondary guest-login-btn" type="button" id="guest-login">
         <span data-icon="sparkles" data-size="17"></span>
@@ -261,7 +236,6 @@
     </div>
   </main>
 
-  <script src="../assets/js/api.js"></script>
   <script src="../assets/js/data.js"></script>
   <script src="../assets/js/icons.js"></script>
   <script src="../assets/js/music.js"></script>

@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/style.css">
+  <script src="assets/js/config.js"></script>
   <script src="assets/js/api.js"></script>
   <script>
     (function () {
@@ -30,33 +31,17 @@
       } catch (error) { /* preferências indisponíveis */ }
 
       (async function () {
-        var hasSession = false;
-        try {
-          var identity = window.SchoolFlowAPI ? await window.SchoolFlowAPI.me() : null;
-          if (identity && identity.user) {
-            var user = identity.user;
-            localStorage.setItem('schoolflow.session.v1', JSON.stringify({
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              role: user.role,
-              subject: user.subject || '',
-              stage: user.stage || '',
-              grade: user.grade || '',
-              avatarTone: user.avatarTone || '',
-              onboardingDone: Boolean(user.onboardingDone),
-              isGuest: false
-            }));
-            hasSession = true;
-          }
-        } catch (error) { /* sem backend: usa a sessão local */ }
-
-        if (!hasSession) {
+        var target = 'pages/login.html';
+        var user = window.SchoolFlowAPI ? await window.SchoolFlowAPI.restoreIdentity() : null;
+        if (user && user.role !== 'convidado') {
+          target = 'pages/dashboard.html';
+        } else {
           try {
-            hasSession = Boolean(localStorage.getItem('schoolflow.session.v1') || localStorage.getItem('loggedUser'));
-          } catch (error) { hasSession = false; }
+            var session = JSON.parse(localStorage.getItem('schoolflow.session.v1') || 'null');
+            if (session && session.role === 'convidado') target = 'pages/dashboard.html';
+          } catch (error) { /* sem sessão local */ }
         }
-        window.location.replace(hasSession ? 'pages/dashboard.html' : 'pages/login.html');
+        window.location.replace(target);
       })();
     })();
   </script>
