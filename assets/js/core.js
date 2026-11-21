@@ -207,8 +207,18 @@ function cycleTheme() {
 }
 
 function restoreSession() {
-  // A sessão agora é restaurada pelo Firebase Authentication em data.js.
-  // Mantido como no-op para compatibilidade com chamadas antigas.
+  const session = getSession();
+  if (!session) return;
+  if (session.role === 'convidado' || session.isGuest || session.id === 'guest') {
+    state.currentUser = getGuestUser();
+    setSession(state.currentUser);
+    return;
+  }
+  const user = state.users.find((u) => u.id === Number(session.id));
+  if (user) {
+    state.currentUser = user;
+    setSession(user);
+  }
 }
 
 function isAdmin() {
@@ -223,15 +233,17 @@ function requireAuth() {
   return true;
 }
 
-async function logout() {
-  await sfLogout();
+function logout() {
+  clearSession();
+  state.currentUser = null;
   prefs.presentationMode = false;
   savePrefs();
   window.location.href = 'login.html';
 }
 
-async function goGuestSignup() {
-  await sfLogout();
+function goGuestSignup() {
+  clearSession();
+  state.currentUser = null;
   prefs.presentationMode = false;
   savePrefs();
   window.location.href = 'login.html?signup=1';
@@ -2306,15 +2318,8 @@ function bindGlobalEvents() {
   }
 }
 
-async function bootCore() {
-  if (window.SF_DATA_READY) {
-    try {
-      await window.SF_DATA_READY;
-    } catch (error) {
-      console.error('Falha ao aguardar os dados do SchoolFlow.', error);
-    }
-  }
-
+function bootCore() {
+  restoreSession();
   applyAppearance();
   hydrateIcons(document);
   if (currentPage() !== 'login') {
@@ -2323,7 +2328,6 @@ async function bootCore() {
   }
   bindGlobalEvents();
   updateTimerUI();
-  document.dispatchEvent(new CustomEvent('sf:ready'));
 }
 
 document.addEventListener('DOMContentLoaded', bootCore);
