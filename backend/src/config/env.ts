@@ -26,12 +26,18 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().min(1).default('7d'),
   CORS_ORIGIN: z.string().min(1).default('http://localhost:4173'),
   COOKIE_SECURE: booleanFromString,
+  /**
+   * Em produção o frontend e o backend estão em subdomínios diferentes de um
+   * domínio público (onrender.com está na PSL), portanto a requisição é cross-site
+   * e o cookie precisa de SameSite=None. Em desenvolvimento, Lax é suficiente.
+   */
+  COOKIE_SAME_SITE: z.enum(['none', 'lax', 'strict']).optional(),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info')
 });
 
-export type Env = z.infer<typeof envSchema>;
+export type Env = z.infer<typeof envSchema> & { COOKIE_SAME_SITE: 'none' | 'lax' | 'strict' };
 
 let cachedEnv: Env | undefined;
 
@@ -50,10 +56,19 @@ export function getEnv(): Env {
   }
 
   // Em produção o cookie deve ser sempre Secure (HTTPS), mesmo que .env diga o contrário.
-  cachedEnv =
-    result.data.NODE_ENV === 'production'
-      ? { ...result.data, COOKIE_SECURE: true }
-      : result.data;
+  const isProduction = result.data.NODE_ENV === 'production';
+  const secure = isProduction ? true : result.data.COOKIE_SECURE;
+  const sameSite =
+    result.data.COOKIE_SAME_SITE ?? (isProduction ? 'none' : 'lax');
+
+  // SameSite=None exige Secure; sem isso o navegador descarta o cookie.
+  if (sameSite === 'none' && !secure) {
+    throw new Error(
+      'COOKIE_SAME_SITE=none exige COOKIE_SECURE=true (ou NODE_ENV=production).'
+    );
+  }
+
+  cachedEnv = { ...result.data, COOKIE_SECURE: secure, COOKIE_SAME_SITE: sameSite };
 
   return cachedEnv;
 }

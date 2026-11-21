@@ -217,8 +217,10 @@ async function restoreSession() {
   }
 
   // Modo convidado é a única sessão que permanece local (sem autenticação).
+  // Só aceitamos perfis explicitamente convidados: sessões locais antigas de
+  // usuários reais não devem se transformar em convidados.
   const session = getSession();
-  if (session && (session.role === 'convidado' || session.isGuest || session.id === 'guest')) {
+  if (session && (session.role === 'convidado' || session.id === 'guest')) {
     state.currentUser = getGuestUser();
     return;
   }
@@ -2329,11 +2331,8 @@ async function bootCore() {
   hydrateIcons(document);
   if (currentPage() !== 'login') {
     if (!requireAuth()) return;
-    if (state.currentUser.role === 'convidado') {
-      clearSession();
-      window.location.replace('login.html');
-      return;
-    }
+    // Convidados navegam normalmente com dados demo locais; bootstrap() já
+    // reconhece o perfil convidado e não tenta carregar dados da API.
     if (window.SchoolFlowAPI) await window.SchoolFlowAPI.bootstrap();
     renderShell();
   }

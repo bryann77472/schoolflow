@@ -4,6 +4,17 @@ import { env } from '../config/env';
 import { loginBodySchema, registerBodySchema } from '../schemas/auth.schema';
 import * as authService from '../services/auth.service';
 
+/** Mesmas opções para emissão e remoção: o navegador precisa comparar nome, path e site. */
+function cookieOptions() {
+  return {
+    httpOnly: true,
+    secure: env.COOKIE_SECURE,
+    sameSite: env.COOKIE_SAME_SITE,
+    path: '/',
+    maxAge: AUTH_COOKIE_MAX_AGE
+  };
+}
+
 async function issueToken(reply: FastifyReply, user: authService.SafeUser): Promise<void> {
   const token = await reply.jwtSign({
     sub: String(user.id),
@@ -11,13 +22,7 @@ async function issueToken(reply: FastifyReply, user: authService.SafeUser): Prom
     role: user.role
   });
 
-  reply.setCookie(AUTH_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: env.COOKIE_SECURE,
-    sameSite: 'strict',
-    path: '/',
-    maxAge: AUTH_COOKIE_MAX_AGE
-  });
+  reply.setCookie(AUTH_COOKIE_NAME, token, cookieOptions());
 }
 
 export async function register(request: FastifyRequest, reply: FastifyReply) {
@@ -35,7 +40,7 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
 }
 
 export function logout(_request: FastifyRequest, reply: FastifyReply) {
-  reply.clearCookie(AUTH_COOKIE_NAME, { path: '/' });
+  reply.clearCookie(AUTH_COOKIE_NAME, cookieOptions());
   return reply.send({ message: 'Sessão encerrada.' });
 }
 

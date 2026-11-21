@@ -5,6 +5,7 @@ import { cookiesPlugin } from './plugins/cookies';
 import { corsPlugin } from './plugins/cors';
 import { errorHandlerPlugin } from './plugins/error-handler';
 import { jwtPlugin } from './plugins/jwt';
+import { originGuardPlugin } from './plugins/origin-guard';
 import { registerRoutes } from './routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -17,6 +18,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(errorHandlerPlugin);
   await app.register(cookiesPlugin);
   await app.register(corsPlugin);
+  await app.register(originGuardPlugin);
   await app.register(jwtPlugin);
   await app.register(registerRoutes, { prefix: '/api' });
 

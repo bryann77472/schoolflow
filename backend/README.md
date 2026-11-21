@@ -65,6 +65,7 @@ Para rodar o build compilado: `npm start`.
 | `JWT_EXPIRES_IN` | não | `7d` | Validade do token. |
 | `CORS_ORIGIN` | não | `http://localhost:4173` | Origens permitidas, separadas por vírgula. |
 | `COOKIE_SECURE` | não | `false` | Em produção é forçado para `true`. |
+| `COOKIE_SAME_SITE` | não | `none` em produção, `lax` em dev | Use `none` quando frontend e backend estiverem em subdomínios diferentes do Render: `onrender.com` está na Public Suffix List, então a requisição é cross-site. Exige `Secure`. |
 | `LOG_LEVEL` | não | `info` | Nível do logger Pino. |
 
 A aplicação **falha na inicialização** se `DATABASE_URL` ou `JWT_SECRET` estiverem ausentes/inválidos.
@@ -137,8 +138,9 @@ Respostas de erro seguem o formato `{ "error": "código", "message": "...", "det
 ## Segurança
 
 - Senhas com **bcrypt** (12 rounds); `passwordHash` nunca é serializado.
-- JWT assinado em cookie **httpOnly**, `SameSite=Strict`, `Secure` em produção (aceita também `Authorization: Bearer`).
+- JWT assinado em cookie **httpOnly**, `Secure` em produção, `SameSite=None` em produção (`Lax` em dev) para suportar o cross-site do Render (aceita também `Authorization: Bearer`).
 - **CORS** com lista explícita de origens e `credentials: true` (não usa `*`).
+- **Proteção CSRF complementar**: requisições que modificam dados e enviam `Origin` são aceitas somente se a origem estiver na mesma lista explícita do CORS. Clients sem `Origin` (curl, health checks) continuam funcionando.
 - **RBAC** no backend via `requireRole(...)`; o frontend nunca é fonte de autoridade.
 - Validação de entrada com **Zod** e tratamento centralizado de erros (sem stack em produção).
 - Conexão com banco **lazy**: `/api/health` continua disponível se o PostgreSQL estiver fora.
