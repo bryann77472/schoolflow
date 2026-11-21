@@ -2232,6 +2232,10 @@ function bindPageEvents() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // O core.js monta o shell e restaura a sessão de forma assíncrona. Esperar
+  // essa promessa evita que a página desista da renderização por não encontrar
+  // state.currentUser ainda (shell carregava, conteúdo ficava vazio).
+  if (window.SchoolFlowReady) await window.SchoolFlowReady;
   const page = currentPage();
   if (page === 'login') {
     initLogin();

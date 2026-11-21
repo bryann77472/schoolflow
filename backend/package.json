@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test tests/users-classes.test.ts tests/modules-3-7.test.ts tests/frontend-bridge.test.ts tests/cookie-security.test.ts",
+    "test": "tsx --test tests/users-classes.test.ts tests/modules-3-7.test.ts tests/frontend-bridge.test.ts tests/cookie-security.test.ts tests/frontend-boot.test.ts",
     "db:generate": "prisma generate",
     "db:migrate:create": "prisma migrate dev --create-only",
     "db:migrate:deploy": "prisma migrate deploy",

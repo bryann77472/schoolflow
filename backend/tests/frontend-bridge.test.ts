@@ -47,13 +47,25 @@ interface Context {
 }
 
 function buildContext(hostname = 'localhost', storage: Record<string, string> = {}) {
-  const calls: Array<{ path: string; method: string; credentials?: string; body?: unknown }> = [];
+  const calls: Array<{
+    path: string;
+    method: string;
+    credentials?: string;
+    body?: unknown;
+    headers?: Record<string, string>;
+  }> = [];
   const json = (body: unknown, status = 200) =>
     Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body), text: () => Promise.resolve(JSON.stringify(body)) });
 
   const fetchStub = (url: string, init: any) => {
-    const requestPath = url.replace(/^https?:\/\/[^/]+\/api/, '');
-    calls.push({ path: requestPath, method: init.method || 'GET', credentials: init.credentials, body: init.body ? JSON.parse(init.body) : undefined });
+    const requestPath = url.replace(/^(?:https?:\/\/[^/]+)?\/api/, '');
+    calls.push({
+      path: requestPath,
+      method: init.method || 'GET',
+      credentials: init.credentials,
+      headers: init.headers,
+      body: init.body ? JSON.parse(init.body) : undefined
+    });
     if (requestPath === '/health') return json({ status: 'ok' });
     if (requestPath === '/auth/me') return json({ user: identity });
     if (requestPath === '/auth/login') return json({ user: identity });
@@ -110,9 +122,9 @@ function apiOf(ctx: Context) {
 }
 
 describe('configuração da URL da API', () => {
-  it('usa o Web Service do Render em produção (não o Static Site)', () => {
+  it('usa o mesmo origem (/api) em produção, via rewrite do Static Site', () => {
     const { context } = buildContext('theschoolflow.onrender.com');
-    assert.equal(apiOf(context).base, 'https://schoolflow-gkil.onrender.com/api');
+    assert.equal(apiOf(context).base, '/api');
   });
 
   it('usa localhost:3000 em desenvolvimento', () => {
@@ -139,7 +151,15 @@ describe('autenticação na ponte frontend', () => {
     assert.deepEqual((registerCall?.body as any).confirmPassword, 'senha123');
 
     await api.logout();
-    assert.equal(calls.find((call) => call.path === '/auth/logout')?.method, 'POST');
+    const logoutCall = calls.find((call) => call.path === '/auth/logout');
+    assert.equal(logoutCall?.method, 'POST');
+    assert.equal(logoutCall?.credentials, 'include');
+    assert.equal(logoutCall?.body, undefined);
+    // Nenhum Content-Type em requisição sem body (o Fastify responderia 400).
+    assert.equal(logoutCall?.headers?.['Content-Type'], undefined);
+    // Requisições com body continuam enviando o header.
+    assert.equal(calls[0].headers?.['Content-Type'], 'application/json');
+    assert.equal(registerCall?.headers?.['Content-Type'], 'application/json');
   });
 
   it('restaura a sessão apenas com GET /auth/me (cookie httpOnly)', async () => {

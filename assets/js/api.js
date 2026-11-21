@@ -31,10 +31,14 @@
     options = options || {};
     var init = {
       method: options.method || 'GET',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' }
+      credentials: 'include'
     };
-    if (options.body !== undefined) init.body = JSON.stringify(options.body);
+    // Só declara JSON quando há corpo. Um POST sem body com Content-Type
+    // application/json é rejeitado pelo Fastify com HTTP 400.
+    if (options.body !== undefined) {
+      init.headers = { 'Content-Type': 'application/json' };
+      init.body = JSON.stringify(options.body);
+    }
 
     return fetch(BASE + path, init).then(function (response) {
       if (response.status === 401) {

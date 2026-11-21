@@ -207,6 +207,15 @@ function cycleTheme() {
 }
 
 async function restoreSession() {
+  // Convidado é a única sessão local: resolvemos antes de qualquer chamada de rede.
+  // Só aceitamos perfis explicitamente convidados, para que uma sessão local
+  // antiga de usuário real nunca vire convidado.
+  const localSession = getSession();
+  if (localSession && (localSession.role === 'convidado' || localSession.id === 'guest')) {
+    state.currentUser = getGuestUser();
+    return;
+  }
+
   // A sessão real vem somente do cookie httpOnly, via GET /api/auth/me.
   if (window.SchoolFlowAPI) {
     const user = await window.SchoolFlowAPI.restoreIdentity();
@@ -216,14 +225,6 @@ async function restoreSession() {
     }
   }
 
-  // Modo convidado é a única sessão que permanece local (sem autenticação).
-  // Só aceitamos perfis explicitamente convidados: sessões locais antigas de
-  // usuários reais não devem se transformar em convidados.
-  const session = getSession();
-  if (session && (session.role === 'convidado' || session.id === 'guest')) {
-    state.currentUser = getGuestUser();
-    return;
-  }
   state.currentUser = null;
 }
 
@@ -2340,5 +2341,23 @@ async function bootCore() {
   updateTimerUI();
 }
 
-document.addEventListener('DOMContentLoaded', bootCore);
+// Promessa única de inicialização: o pages.js espera por ela antes de renderizar
+// o conteúdo das páginas. Sem isso, o listener do pages.js rodava enquanto o
+// bootCore ainda estava no await de restoreIdentity() e encontrava
+// state.currentUser === null, deixando o #page vazio.
+window.SchoolFlowReady = new Promise((resolve) => {
+  document.addEventListener(
+    'DOMContentLoaded',
+    async () => {
+      try {
+        await bootCore();
+      } catch (error) {
+        console.error('Falha ao inicializar o SchoolFlow.', error);
+      } finally {
+        resolve();
+      }
+    },
+    { once: true }
+  );
+});
 

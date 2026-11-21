@@ -158,11 +158,42 @@ Respostas de erro seguem o formato `{ "error": "código", "message": "...", "det
   nos respectivos endpoints, com debounce de 350 ms.
 - Se o backend estiver fora ou não houver cookie, a aplicação permanece em **modo local**
   com `localStorage`, exatamente como antes. Contas demo e modo convidado continuam locais.
+- Em produção, `assets/js/config.js` define a base como `/api` (mesma origem do Static Site).
+  Isso exige um **rewrite** no Render — ver abaixo — e elimina o problema de cookies de terceiros.
+
+### Rewrite `/api` no Render (necessário em produção)
+
+Como `onrender.com` está na Public Suffix List, frontend e backend são cross-site e o
+Chrome pode bloquear cookies de terceiros (principalmente no modo anônimo). A solução adotada
+foi servir a API na **mesma origem** do frontend:
+
+No **Static Site**, em *Settings → Redirects/Rewrites*, adicione a regra:
+
+| Source | Destination | Action |
+|---|---|---|
+| `/api/*` | `https://schoolflow-gkil.onrender.com/api/*` | **Rewrite** |
+
+Ou, no blueprint do Static Site:
+
+```yaml
+routes:
+  - type: rewrite
+    source: /api/*
+    destination: https://schoolflow-gkil.onrender.com/api/*
+```
+
+O navegador passa a chamar apenas `https://theschoolflow.onrender.com/api/...`. O Render
+busca o conteúdo no Web Service e devolve na URL original, encaminhando método, headers
+(inclusive `Cookie`) e body. O cookie deixa de ser third-party.
+
+O backend continua com CORS explícito e `Origin Guard` — quando a chamada passa pelo rewrite,
+o `Origin` é a origem do Static Site, que já está na allowlist. Após confirmar o rewrite,
+`COOKIE_SAME_SITE=lax` também pode ser usado em produção (o padrão `none` continua seguro).
 
 Configuração no navegador (opcional):
 
 ```js
-localStorage.setItem('schoolflow.api.base', 'https://seu-api.onrender.com/api'); // padrão: http://localhost:3000/api
+localStorage.setItem('schoolflow.api.base', 'https://seu-api.onrender.com/api'); // padrão: /api (prod) ou http://localhost:3000/api (dev)
 localStorage.setItem('schoolflow.api.enabled', 'false'); // desliga a ponte
 ```
 

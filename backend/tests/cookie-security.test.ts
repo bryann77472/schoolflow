@@ -138,6 +138,65 @@ describe('ciclo de vida do cookie cross-site', () => {
     assert.match(setCookie!, /HttpOnly/i);
     assert.match(setCookie!, /Max-Age=0/);
   });
+
+  it('ciclo completo: cadastro → login → me → logout', async () => {
+    const flowEmail = `fullflow-${Date.now()}@schoolflow.test`;
+    try {
+      const register = await app.inject({
+        method: 'POST',
+        url: '/api/auth/register',
+        headers: { origin: ORIGIN },
+        payload: {
+          name: 'Fluxo Completo',
+          email: flowEmail,
+          password,
+          confirmPassword: password,
+          stage: 'medio',
+          grade: '2º ano'
+        }
+      });
+      assert.equal(register.statusCode, 201, register.body);
+      assert.equal(register.json().user.email, flowEmail);
+
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        headers: { origin: ORIGIN },
+        payload: { email: flowEmail, password }
+      });
+      assert.equal(login.statusCode, 200, login.body);
+      const cookie = cookieValue(login.headers['set-cookie'] as string | undefined);
+
+      const me = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { origin: ORIGIN, cookie }
+      });
+      assert.equal(me.statusCode, 200, me.body);
+      assert.equal(me.json().user.email, flowEmail);
+
+      const logout = await app.inject({
+        method: 'POST',
+        url: '/api/auth/logout',
+        headers: { origin: ORIGIN, cookie }
+      });
+      assert.equal(logout.statusCode, 200, logout.body);
+      assert.match(String(logout.headers['set-cookie']), /Max-Age=0/);
+      assert.match(String(logout.headers['set-cookie']), /SameSite=None/i);
+    } finally {
+      await prisma.user.deleteMany({ where: { email: flowEmail } });
+    }
+  });
+
+  it('logout com Content-Type JSON e corpo vazio é rejeitado pelo Fastify (causa do 400)', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+      headers: { origin: ORIGIN, 'content-type': 'application/json' }
+    });
+    assert.equal(response.statusCode, 400);
+    assert.match(response.json().message, /Body cannot be empty/);
+  });
 });
 
 describe('CSRF / CORS', () => {
@@ -213,7 +272,7 @@ describe('modo convidado (frontend)', () => {
   });
 
   it('não redireciona convidado para login nas páginas internas', async () => {
-    const snippet = extract('async function bootCore()', '\ndocument.addEventListener');
+    const snippet = extract('async function bootCore()', '\nwindow.SchoolFlowReady');
     let redirects = 0;
     let shellRendered = false;
     const context = {
