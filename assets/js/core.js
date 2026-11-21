@@ -234,6 +234,7 @@ function requireAuth() {
 }
 
 function logout() {
+  if (window.SchoolFlowAPI) window.SchoolFlowAPI.logout();
   clearSession();
   state.currentUser = null;
   prefs.presentationMode = false;
@@ -2318,12 +2319,13 @@ function bindGlobalEvents() {
   }
 }
 
-function bootCore() {
+async function bootCore() {
   restoreSession();
   applyAppearance();
   hydrateIcons(document);
   if (currentPage() !== 'login') {
     if (!requireAuth()) return;
+    if (window.SchoolFlowAPI) await window.SchoolFlowAPI.bootstrap();
     renderShell();
   }
   bindGlobalEvents();

@@ -414,6 +414,16 @@ function saveState() {
   }
 }
 
+// A persistência local continua identica; quando o backend está disponível,
+// cada mudança também é sincronizada com a API (ver assets/js/api.js).
+window.SchoolFlowLocalSave = saveState;
+saveState = function () {
+  window.SchoolFlowLocalSave();
+  if (window.SchoolFlowAPI && typeof window.SchoolFlowAPI.scheduleSync === 'function') {
+    window.SchoolFlowAPI.scheduleSync();
+  }
+};
+
 function resetDemoData() {
   localStorage.removeItem(DATA_KEY);
   localStorage.removeItem(SESSION_KEY);

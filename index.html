@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/style.css">
+  <script src="assets/js/api.js"></script>
   <script>
     (function () {
       try {
@@ -26,15 +27,37 @@
         root.dataset.motion = prefs.motion || 'full';
         root.dataset.vibrancy = prefs.vibrancy || 'super';
         root.dataset.contrast = prefs.contrast === 'high' ? 'high' : 'normal';
+      } catch (error) { /* preferências indisponíveis */ }
 
+      (async function () {
         var hasSession = false;
         try {
-          hasSession = Boolean(localStorage.getItem('schoolflow.session.v1') || localStorage.getItem('loggedUser'));
-        } catch (error) { hasSession = false; }
+          var identity = window.SchoolFlowAPI ? await window.SchoolFlowAPI.me() : null;
+          if (identity && identity.user) {
+            var user = identity.user;
+            localStorage.setItem('schoolflow.session.v1', JSON.stringify({
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              subject: user.subject || '',
+              stage: user.stage || '',
+              grade: user.grade || '',
+              avatarTone: user.avatarTone || '',
+              onboardingDone: Boolean(user.onboardingDone),
+              isGuest: false
+            }));
+            hasSession = true;
+          }
+        } catch (error) { /* sem backend: usa a sessão local */ }
+
+        if (!hasSession) {
+          try {
+            hasSession = Boolean(localStorage.getItem('schoolflow.session.v1') || localStorage.getItem('loggedUser'));
+          } catch (error) { hasSession = false; }
+        }
         window.location.replace(hasSession ? 'pages/dashboard.html' : 'pages/login.html');
-      } catch (error) {
-        window.location.replace('pages/login.html');
-      }
+      })();
     })();
   </script>
 </head>

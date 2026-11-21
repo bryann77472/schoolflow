@@ -1,0 +1,196 @@
+// SchoolFlow — modelo relacional
+// Os valores dos enums usam as mesmas strings do frontend (frontend/data.js),
+// facilitando a futura troca de localStorage por chamadas à API.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  aluno
+  professor
+  admin
+}
+
+enum Stage {
+  fundamental
+  medio
+}
+
+enum AssignmentStatus {
+  todo
+  doing
+  review
+  done
+}
+
+enum Priority {
+  low
+  medium
+  high
+}
+
+enum EventCategory {
+  meeting
+  academic
+  culture
+  sports
+  holiday
+  other
+}
+
+/// Usuários (alunos, professores e administradores).
+model User {
+  id             Int               @id @default(autoincrement())
+  name           String            @db.VarChar(120)
+  email          String            @unique @db.VarChar(190)
+  passwordHash   String            @map("password_hash") @db.VarChar(255)
+  role           Role              @default(aluno)
+  stage          Stage?
+  grade          String?           @db.VarChar(30)
+  subject        String?           @db.VarChar(120)
+  avatarTone     String            @default("indigo") @map("avatar_tone") @db.VarChar(30)
+  onboardingDone Boolean           @default(false) @map("onboarding_done")
+  /// Preferências de UI (tema, acento, layout, atalhos etc.), hoje em schoolflow.prefs.v1.
+  preferences    Json              @default("{}")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  taughtClasses    Class[]            @relation("ClassTeacher")
+  enrollments      Enrollment[]
+  assignments      Assignment[]       @relation("AssignmentTeacher")
+  rsvps            EventRsvp[]
+  focusRecords     FocusRecord[]
+  notificationReads NotificationRead[]
+
+  @@map("users")
+}
+
+/// Turmas / aulas recorrentes.
+model Class {
+  id          Int    @id @default(autoincrement())
+  name        String @db.VarChar(180)
+  description String? @db.Text
+  stage       Stage
+  dayOfWeek   Int    @map("day_of_week")
+  timeStart   String @map("time_start") @db.VarChar(5)
+  timeEnd     String @map("time_end") @db.VarChar(5)
+  room        String? @db.VarChar(60)
+  color       String @db.VarChar(30)
+  teacherId   Int    @map("teacher_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  teacher     User         @relation("ClassTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  enrollments Enrollment[]
+  assignments Assignment[]
+  events      Event[]
+
+  @@index([stage])
+  @@index([teacherId])
+  @@map("classes")
+}
+
+/// Matrícula de um aluno em uma turma (substitui o array enrollments do localStorage).
+model Enrollment {
+  studentId Int      @map("student_id")
+  classId   Int      @map("class_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  student User  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, classId])
+  @@index([classId])
+  @@map("enrollments")
+}
+
+/// Trabalhos e atividades (Kanban).
+model Assignment {
+  id          Int              @id @default(autoincrement())
+  title       String           @db.VarChar(200)
+  description String?          @db.Text
+  dueDate     DateTime         @map("due_date") @db.Date
+  classId     Int              @map("class_id")
+  teacherId   Int              @map("teacher_id")
+  status      AssignmentStatus @default(todo)
+  priority    Priority         @default(medium)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher User  @relation("AssignmentTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+
+  @@index([classId])
+  @@index([teacherId])
+  @@index([dueDate])
+  @@map("assignments")
+}
+
+/// Eventos do calendário (globais ou vinculados a uma turma).
+model Event {
+  id          Int           @id @default(autoincrement())
+  title       String        @db.VarChar(200)
+  description String?       @db.Text
+  date        DateTime      @db.Date
+  timeStart   String        @map("time_start") @db.VarChar(5)
+  timeEnd     String        @map("time_end") @db.VarChar(5)
+  location    String?       @db.VarChar(120)
+  category    EventCategory @default(other)
+  classId     Int?          @map("class_id")
+  isGlobal    Boolean       @default(true) @map("is_global")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  class Class?      @relation(fields: [classId], references: [id], onDelete: SetNull)
+  rsvps EventRsvp[]
+
+  @@index([date])
+  @@index([classId])
+  @@map("events")
+}
+
+/// Confirmação de presença (substitui o array attendees dos eventos).
+model EventRsvp {
+  eventId     Int      @map("event_id")
+  userId      Int      @map("user_id")
+  confirmedAt DateTime @default(now()) @map("confirmed_at")
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+  @@map("event_rsvps")
+}
+
+/// Estado de "notificação lida". O conteúdo da notificação é derivado
+/// de prazos/aulas/eventos, como no frontend; aqui só persiste a leitura.
+model NotificationRead {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  key       String   @db.VarChar(190)
+  readAt    DateTime @default(now()) @map("read_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@map("notification_reads")
+}
+
+/// Registros de foco por usuário e data (substitui focusLog + focusSessions).
+model FocusRecord {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  date      DateTime @db.Date
+  minutes   Int      @default(0)
+  sessions  Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("focus_records")
+}

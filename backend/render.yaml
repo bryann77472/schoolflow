@@ -1,0 +1,28 @@
+# Blueprint opcional para hospedar o backend como Web Service no Render.
+# O frontend continua estático e independente (Render Static Site).
+
+services:
+  - type: web
+    name: schoolflow-api
+    runtime: node
+    region: oregon
+    # Render injeta PORT automaticamente; a aplicação usa process.env.PORT e escuta em 0.0.0.0.
+    buildCommand: npm install && npm run build && npm run db:generate
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      # Preencha no painel do Render (sync: false = não sobrescreve nem versiona valores).
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+
+# Migrations NÃO são executadas automaticamente no deploy.
+# Após revisão/autorização, execute manualmente no Shell do Render:
+#   npm run db:migrate:deploy

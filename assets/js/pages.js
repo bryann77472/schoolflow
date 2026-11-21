@@ -1960,12 +1960,53 @@ function initLogin() {
   }
 
   if (loginForm) {
-    loginForm.addEventListener('submit', (event) => {
+    loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       clearError(loginError);
       const email = document.getElementById('email').value.trim().toLowerCase();
       const password = document.getElementById('password').value;
       const submit = document.getElementById('login-submit');
+
+      const finishLogin = (user) => {
+        state.currentUser = user;
+        setSession(user);
+        if (submit) {
+          submit.disabled = true;
+          submit.innerHTML = `${icon('loader', 18)} Entrando…`;
+          submit.querySelector('svg')?.classList.add('spin');
+        }
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 550);
+      };
+
+      // Tenta o backend primeiro; contas demo/offline continuam usando o localStorage.
+      if (window.SchoolFlowAPI) {
+        try {
+          const result = await window.SchoolFlowAPI.login(email, password);
+          const apiUser = {
+            id: result.user.id,
+            name: result.user.name,
+            email: result.user.email,
+            role: result.user.role,
+            stage: result.user.stage || '',
+            grade: result.user.grade || '',
+            subject: result.user.subject || '',
+            avatarTone: result.user.avatarTone,
+            onboardingDone: Boolean(result.user.onboardingDone),
+            password: ''
+          };
+          if (apiUser.role !== selectedRole) {
+            showError(loginError, `Essa conta pertence ao perfil “${getRoleLabel(apiUser.role)}”. Selecione o perfil correto para entrar.`);
+            return;
+          }
+          finishLogin(apiUser);
+          return;
+        } catch (apiError) {
+          // sem backend: segue com a validação local abaixo
+        }
+      }
+
       const user = state.users.find((u) => u.email.toLowerCase() === email && u.password === password);
 
       if (!user) {
@@ -1977,21 +2018,12 @@ function initLogin() {
         return;
       }
 
-      state.currentUser = user;
-      setSession(user);
-      if (submit) {
-        submit.disabled = true;
-        submit.innerHTML = `${icon('loader', 18)} Entrando…`;
-        submit.querySelector('svg')?.classList.add('spin');
-      }
-      setTimeout(() => {
-        window.location.href = 'dashboard.html';
-      }, 550);
+      finishLogin(user);
     });
   }
 
   if (signupForm) {
-    signupForm.addEventListener('submit', (event) => {
+    signupForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       clearError(signupError);
       const name = document.getElementById('signup-name').value.trim();
@@ -2027,7 +2059,28 @@ function initLogin() {
         return;
       }
 
-      const user = registerStudent({ name, email, password, stage, grade, avatarTone: 'indigo' });
+      let user;
+      if (window.SchoolFlowAPI) {
+        try {
+          const result = await window.SchoolFlowAPI.register({ name, email, password, confirm, stage, grade });
+          user = {
+            id: result.user.id,
+            name: result.user.name,
+            email: result.user.email,
+            role: 'aluno',
+            stage: result.user.stage || stage,
+            grade: result.user.grade || grade,
+            subject: result.user.subject || '',
+            avatarTone: result.user.avatarTone || 'indigo',
+            onboardingDone: false,
+            password: ''
+          };
+        } catch (apiError) {
+          user = registerStudent({ name, email, password, stage, grade, avatarTone: 'indigo' });
+        }
+      } else {
+        user = registerStudent({ name, email, password, stage, grade, avatarTone: 'indigo' });
+      }
       state.currentUser = user;
       setSession(user);
       if (submit) {
@@ -2212,13 +2265,14 @@ function bindPageEvents() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const page = currentPage();
   if (page === 'login') {
     initLogin();
     return;
   }
   if (!state.currentUser) return;
+  if (window.SchoolFlowAPI) await window.SchoolFlowAPI.bootstrap();
   bindPageEvents();
   if (page === 'dashboard') {
     initDashboard();

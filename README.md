@@ -42,6 +42,8 @@ O **SchoolFlow** é um organizador escolar para estudantes do **Ensino Fundament
 
 Tudo funciona no navegador com dados de demonstração persistidos em `localStorage`. O projeto não exige instalação de dependências, framework ou etapa de compilação.
 
+> **Backend opcional:** a pasta `backend/` contém uma API REST independente (Node.js, TypeScript, Fastify, Prisma e PostgreSQL). Quando disponível, `assets/js/api.js` sincroniza os dados com o servidor usando cookie httpOnly; sem ele, o frontend continua funcionando apenas com `localStorage`. Veja `backend/README.md` para executar e configurar.
+
 ## Destaques da interface
 
 - **Shell de aplicação** com sidebar retrátil, alça visível para expandir quando recolhida, topbar, breadcrumb, menu mobile e atalhos rápidos.
@@ -227,6 +229,7 @@ Na primeira execução sem dados salvos, o estado demo é gravado em `schoolflow
 schoolflow/
 ├── index.html                  # Splash + redirecionamento por sessão
 ├── README.md
+├── backend/                    # API REST (Fastify + Prisma + PostgreSQL)
 ├── pages/
 │   ├── login.html              # Autenticação, criação de conta e escolha de perfil demo
 │   ├── dashboard.html          # Visão geral, semana, foco e próximos itens
@@ -238,8 +241,10 @@ schoolflow/
     ├── css/
     │   └── style.css           # Design system, componentes e responsividade
     └── js/
+        ├── api.js              # Ponte fetch() ↔ API REST (fallback localStorage)
         ├── data.js             # Estado, dados demo, persistência e utilitários
         ├── icons.js            # Ícones SVG inline
+        ├── music.js            # Rádios do modo foco (YouTube IFrame API)
         ├── core.js             # Shell, tema, modais, paleta, foco e atalhos
         └── pages.js            # Renderização e interações das páginas
 ```
